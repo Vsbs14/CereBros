@@ -119,9 +119,12 @@ class Service:
                 raise ValueError("Connect a source before running a signal check")
             batches = list(self.recent)
             fs, labels = self.device.sampling_rate, list(self.device.labels)
-        channels = list(range(len(labels))) if channels is None else channels
-        if any(c < 0 or c >= len(labels) for c in channels) or len(set(channels)) != len(channels):
+            enabled = [c - 1 for c in self.device.active_channels]
+        channels = enabled if channels is None else channels
+        if not channels or any(c < 0 or c >= len(labels) for c in channels) or len(set(channels)) != len(channels):
             raise ValueError("Signal check channels must be unique zero-based indices between 0 and 7")
+        if any(c not in enabled for c in channels):
+            raise ValueError("Selected channel is switched off. Disconnect and reconnect with the intended channels enabled.")
         if not batches:
             return check_signal([], [[]], fs, labels, channels)
         times = np.concatenate([b[0] for b in batches])
@@ -145,6 +148,12 @@ class Service:
                 raise ValueError("Student does not exist")
             if request.sound_pair_id not in {p["id"] for p in SOUND_PAIRS}:
                 raise ValueError("Unknown sound pair")
+            request = request.model_copy(deep=True)
+            enabled = [c - 1 for c in self.device.active_channels]
+            if request.analysis.channel_indices is None:
+                request.analysis.channel_indices = enabled
+            if any(c not in enabled for c in request.analysis.channel_indices):
+                raise ValueError("Selected channel is switched off. Disconnect and reconnect with the intended channels enabled.")
             if request.analysis.channel_indices is not None and any(i >= len(self.device.labels) for i in request.analysis.channel_indices):
                 raise ValueError("Selected analysis channel is unavailable")
             if request.analysis.high_hz >= self.device.sampling_rate / 2:

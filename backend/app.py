@@ -77,7 +77,7 @@ def create_app(data_dir: Path | None = None):
     @app.get("/api/device/signal-check")
     def signal_check(seconds: float = Query(5.0, ge=3, le=15), channels: str | None = Query(None, description="Zero-based channel indices, comma separated")):
         try:
-            selected = None if not channels else [int(c) for c in channels.split(",") if c.strip()]
+            selected = None if channels is None else [int(c) for c in channels.split(",") if c.strip()]
         except ValueError as exc:
             raise ValueError("channels must be comma-separated integers") from exc
         return svc().signal_check(seconds, selected)

@@ -8,6 +8,7 @@ from backend.models import ConnectRequest
 def test_real_adapter_activation_scaling_metadata_and_cleanup(monkeypatch):
     import brainflow.board_shim as sdk
     calls = []
+    pauses = []
 
     class FakeBoard:
         def __init__(self, board_id, params):
@@ -34,9 +35,10 @@ def test_real_adapter_activation_scaling_metadata_and_cleanup(monkeypatch):
         get_sampling_rate = staticmethod(lambda board_id: 125)
 
     monkeypatch.setattr(sdk, "BoardShim", FakeBoard)
-    monkeypatch.setattr("backend.device.time.sleep", lambda _: None)
+    monkeypatch.setattr("backend.device.time.sleep", pauses.append)
     device = Device()
     device.connect(ConnectRequest(source="hardware", serial_port="/test"))
+    assert pauses == [2] + [pause for _ in range(8) for pause in (1, 2, 1)]
     assert calls[:2] == ["prepare", "stream"]
     assert calls[2:] == [cmd for i in range(1, 9) for cmd in (f"chon_{i}_12", f"rldadd_{i}")]
     ts, values = device.read()

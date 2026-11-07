@@ -63,26 +63,26 @@ export interface ERPChartProps {
 }
 
 const C = {
-  panel: '#101c33',
-  plot: '#0b162a',
-  border: '#293b58',
-  grid: '#263853',
-  text: '#e8f0fc',
-  muted: '#9aacc6',
-  cyan: '#5ed8e7',
-  violet: '#b69aff',
-  amber: '#ffc879',
-  green: '#79d6af',
+  panel: '#ffffff',
+  plot: '#f4f8fa',
+  border: '#ccdbe2',
+  grid: '#dae5eb',
+  text: '#253c48',
+  muted: '#526975',
+  cyan: '#287794',
+  violet: '#795daa',
+  amber: '#a9503f',
+  green: '#348269',
 };
 
 const panelStyle: CSSProperties = {
   background: C.panel,
-  border: `1px solid ${C.border}`,
-  borderRadius: 18,
+  border: 0,
+  borderRadius: 0,
   color: C.text,
-  fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif',
-  padding: '18px 20px 16px',
-  boxShadow: '0 12px 36px rgba(3, 10, 24, 0.18)',
+  fontFamily: 'inherit',
+  padding: '0',
+
 };
 
 const headerStyle: CSSProperties = {
@@ -99,7 +99,7 @@ const badgeStyle: CSSProperties = {
   alignItems: 'center',
   border: `1px solid ${C.border}`,
   borderRadius: 999,
-  background: '#172640',
+  background: '#e9f2f6',
   padding: '5px 10px',
   color: C.muted,
   fontSize: 12,

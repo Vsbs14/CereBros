@@ -39,7 +39,7 @@ For frontend development, run `npm run dev --prefix frontend` in a second termin
 
 Connect the board by a data-capable USB cable and follow the manufacturer's electrode/reference and electrical setup instructions: https://docs.neuropawn.tech/getting-started/.
 
-In **Settings**, disconnect simulation, select **LIVE HARDWARE**, enter the serial port (`/dev/ttyACM0`, a macOS `/dev/cu...` path, or `COM3` on Windows), and provide **eight labels** matching physical channel placement plus the electrode reference. Click **Connect source**; the paced manufacturer startup sequence takes about 20 seconds.
+In **Settings**, disconnect simulation, select **LIVE HARDWARE**, enter the serial port (`/dev/ttyACM0`, a macOS `/dev/cu...` path, or `COM3` on Windows), and provide **eight labels** matching physical channel placement plus the electrode reference. Click **Connect source**; the paced manufacturer startup sequence takes about 35 seconds.
 
 Before connecting, set **Channels with electrodes attached** (numbers 1–8, comma separated, e.g. `1,2`). Only these channels are switched on and routed to the bias (RLD) drive, shown on charts, checked and analyzed; floating channels routed to RLD add noise to every channel. All eight acquired channels remain in the original recording. Any bad selected channel rejects that entire epoch.
 

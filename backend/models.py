@@ -107,6 +107,7 @@ class StudentRequest(Model):
 
 
 class DeviceStatus(Model):
+    active_channels: list[int] = Field(default_factory=list)
     active_session_id: str | None = None
     source: Literal["simulation", "hardware"] | None
     connected: bool

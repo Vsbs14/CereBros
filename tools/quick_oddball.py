@@ -12,13 +12,15 @@ Examples (run from the repository root):
     python -m tools.quick_oddball --simulate
     python -m tools.quick_oddball --write-wav          # background WAV for the NeuroPawn app
 
-Timing uses the host clock around a blocking Windows sound call. Sound-at-ear latency is not
-calibrated, so peak latencies are indicative only. Results are exploratory, not diagnostic.
+Timing uses the host clock around a blocking sound call (winsound, aplay or ffplay).
+Sound-at-ear latency is not calibrated, so peak latency is withheld.
 """
 import argparse
 import io
 import json
 import random
+import shutil
+import subprocess
 import sys
 import threading
 import time
@@ -60,17 +62,20 @@ def wav_bytes(samples: np.ndarray) -> bytes:
 
 
 def make_plan(trials: int, deviant_probability: float, seed: int | None = None) -> list[str]:
+    if trials < 1 or not 0 <= deviant_probability <= 0.5:
+        raise ValueError("Use at least one trial and a deviant probability between 0 and 0.5")
     deviants = round(trials * deviant_probability)
-    plan = ["deviant"] * deviants + ["standard"] * (trials - deviants)
+    standards = trials - deviants
     rng = random.Random(seed)
-    # Never start with a deviant and never play two deviants in a row.
-    while True:
-        rng.shuffle(plan)
-        if plan[0] == "standard" and all(not (a == b == "deviant") for a, b in zip(plan, plan[1:])):
-            return plan
+    # Choose gaps after standards directly; shuffle-and-retry can run indefinitely.
+    slots = set(rng.sample(range(standards), deviants))
+    return [condition for i in range(standards)
+            for condition in (["standard", "deviant"] if i in slots else ["standard"])]
 
 
 def write_background_wav(path: Path, trials: int, interval_s: float, deviant_probability: float, lead_s: float = 3.0):
+    if interval_s < 0.1 or lead_s < 0:
+        raise ValueError("WAV interval must be at least 0.1 seconds and lead-in must be nonnegative")
     plan = make_plan(trials, deviant_probability, seed=7)
     total = int(AUDIO_RATE * (lead_s + trials * interval_s + 1))
     audio = np.zeros(total, dtype=np.int16)
@@ -94,12 +99,20 @@ class Player:
             self.winsound = winsound
         except ImportError:
             self.winsound = None
+        self.command = ([shutil.which("aplay"), "-q"] if shutil.which("aplay") else
+                        [shutil.which("ffplay"), "-nodisp", "-autoexit", "-loglevel", "error", "-i", "pipe:0"]
+                        if shutil.which("ffplay") else None)
+        if not self.winsound and not self.command:
+            raise RuntimeError("No supported audio player found. Use the browser experiment, or install aplay/ffplay.")
         self.sounds = {"standard": wav_bytes(tone(STANDARD_HZ)), "deviant": wav_bytes(tone(DEVIANT_HZ))}
 
     def play(self, condition: str) -> float:
         onset = time.time()
         if self.winsound:
             self.winsound.PlaySound(self.sounds[condition], self.winsound.SND_MEMORY)
+        else:
+            subprocess.run(self.command, input=self.sounds[condition], check=True, timeout=10,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
         return onset
 
 
@@ -115,6 +128,10 @@ def print_check(result: dict):
 
 
 def run(args):
+    make_plan(args.trials, args.deviant_probability)  # Validate before touching hardware.
+    if args.interval < 1.1 or args.settle < 3:
+        raise ValueError("Use an interval of at least 1.1 seconds and settling time of at least 3 seconds")
+    player = None if args.check_only else Player()
     channels = [int(c) for c in args.channels.split(",")]
     labels = [f"CH{i}" for i in range(1, 9)]
     device = Device()
@@ -138,6 +155,8 @@ def run(args):
         print(f"Settling for {args.settle:.0f} s. Sit still, eyes open, relaxed jaw.")
         time.sleep(args.settle)
         with lock:
+            if not times:
+                raise RuntimeError("No EEG samples received. Check the serial port, board variant and device connection.")
             ts, data = np.concatenate(times), np.concatenate(chunks)
         recent = ts >= ts[-1] - 5
         result = check_signal(ts[recent], data[recent], device.sampling_rate, labels, [c - 1 for c in channels])
@@ -149,9 +168,6 @@ def run(args):
             return 2
 
         plan = make_plan(args.trials, args.deviant_probability)
-        player = Player()
-        if not player.winsound:
-            print("winsound is unavailable (not Windows): tones will not be audible.")
         print(f"\nPlaying {args.trials} tones ({plan.count('deviant')} high deviants), one every {args.interval} s. "
               "Silently count the high tones.")
         events, start = [], time.time() + 1.0

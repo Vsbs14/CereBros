@@ -1,6 +1,17 @@
 import wave
+import pytest
 
 from tools.quick_oddball import make_plan, write_background_wav
+
+
+@pytest.mark.parametrize("trials,probability", [(0, .2), (20, .8), (20, -.1)])
+def test_invalid_plan_fails_instead_of_looping(trials, probability):
+    with pytest.raises(ValueError):
+        make_plan(trials, probability)
+
+
+def test_half_deviants_constructs_without_retrying():
+    assert make_plan(500, .5) == ["standard", "deviant"] * 250
 
 
 def test_plan_has_requested_deviants_never_first_or_consecutive():

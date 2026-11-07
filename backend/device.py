@@ -37,6 +37,7 @@ class Device:
         self.rng = np.random.default_rng()
         self.stimuli = []
         self.scale_correction = 1.0
+        self.active_channels = list(range(1, 9))
 
     def connect(self, request: ConnectRequest):
         if self.source is not None:
@@ -45,6 +46,7 @@ class Device:
         self.labels = request.electrode_labels
         self.reference = request.electrode_reference
         if request.source == "simulation":
+            self.active_channels = sorted(request.active_channels)
             self.source = "simulation"
             self.simulation_origin = time.time()
             self.simulation_monotonic = time.monotonic()
@@ -80,17 +82,17 @@ class Device:
             time.sleep(2)
             active = set(request.active_channels)
             for channel in range(1, 9):
-                time.sleep(0.5)
+                time.sleep(1)
                 if channel in active:
                     board.config_board(f"chon_{channel}_12")
-                    time.sleep(1)
+                    time.sleep(2)
                     board.config_board(f"rldadd_{channel}")
                 else:
                     # Unused inputs float; keep them out of the bias drive.
                     board.config_board(f"rldremove_{channel}")
                     time.sleep(1)
                     board.config_board(f"choff_{channel}")
-                time.sleep(0.5)
+                time.sleep(1)
             self.active_channels = sorted(active)
             self.scale_correction = knight_scale_correction()
             self.eeg_rows = BoardShim.get_eeg_channels(board_id)
@@ -143,6 +145,7 @@ class Device:
         return {"source": self.source, "connected": self.source is not None, "error": self.error,
                 "sampling_rate": self.sampling_rate if self.source else None,
                 "channel_labels": self.labels, "electrode_reference": self.reference, "last_sample_timestamp": self.last_sample,
+                "active_channels": self.active_channels if self.source else [],
                 "signal_quality": "not_measured" if self.source == "hardware" else "synthetic" if self.source else "unavailable",
                 "units": "microvolts", "hardware_verified": False,
                 "note": "Device connection does not establish electrode contact or ERP suitability."}

@@ -4,7 +4,7 @@ import App from './App';
 
 describe('unconnected workspace',()=>{
  it('shows all core navigation and honest acquisition state',()=>{
-  const html=renderToStaticMarkup(<App/>);
+  const html=renderToStaticMarkup(<App initialPage="Dashboard"/>);
   for(const page of ['Dashboard','Sound Recognition','Live EEG','Students','Session History','Settings']) expect(html).toContain(page);
   expect(html).toContain('Not connected');
   expect(html).toContain('No student selected');
@@ -13,7 +13,7 @@ describe('unconnected workspace',()=>{
   expect(html).not.toContain('brain recognition accuracy');
  });
  it('provides a keyboard skip link and scientific limitations',()=>{
-  const html=renderToStaticMarkup(<App/>);
+  const html=renderToStaticMarkup(<App initialPage="Dashboard"/>);
   expect(html).toContain('href="#main"');
   expect(html).toContain('aria-label="Main navigation"');
   expect(html).toContain('not proof of learning');

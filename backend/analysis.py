@@ -9,7 +9,7 @@ from .models import AnalysisConfig
 from .signal_check import epoch_artifacts, remove_line_noise
 
 
-PIPELINE_VERSION = "1.3.0"
+PIPELINE_VERSION = "1.4.0"
 # Host-side timestamps jitter by a few ms around the 8 ms sample period. Treat a step as a gap
 # only when at least one whole sample is missing (more than 2.5 sample periods apart).
 MAX_SAMPLE_STEP = 2.5
