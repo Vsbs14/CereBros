@@ -31,8 +31,20 @@ const erpData: ERPData = {
 
 describe('EEGChart', () => {
   it('shows an empty state without inventing a waveform', () => {
-    const html = renderToStaticMarkup(<EEGChart />);
-    expect(html).toContain('No EEG data available');
+    const html = renderToStaticMarkup(<EEGChart emptyDetail="Start the backend" />);
+    expect(html).toContain('No EEG Data Available');
+    expect(html).toContain('Start the backend');
+    expect(html).not.toContain('<path');
+    expect(html).not.toContain('chart-badge');
+  });
+
+  it('reports an unavailable signal when samples carry no valid values', () => {
+    const html = renderToStaticMarkup(<EEGChart source="Live headset" samples={[
+      { time_s: 0, channels: { Fz: null } },
+      { time_s: 1, channels: { Fz: null } },
+    ]} />);
+    expect(html).toContain('Signal Unavailable');
+    expect(html).toContain('Source · Live headset');
     expect(html).not.toContain('<path');
   });
 
@@ -48,13 +60,13 @@ describe('EEGChart', () => {
       source="Live headset"
     />);
     expect(html).toContain('Source · Live headset');
-    expect(html).toContain('2 channels');
+    expect(html).toContain('2 Channels');
     expect(html).toContain('Frontal');
     expect(html).toContain('Parietal');
     expect(html).toContain('Oddball');
     expect(html).toContain('Time (s)');
     expect(html).toContain('Scale ±2 µV');
-    expect((html.match(/stroke="#5ed8e7"/g) ?? []).length).toBe(2);
+    expect((html.match(/stroke="#287794"/g) ?? []).length).toBe(2);
   });
 
   it('breaks a trace at null rather than joining across missing samples', () => {
@@ -63,7 +75,7 @@ describe('EEGChart', () => {
       { time_s: 1, channels: { Fz: null } },
       { time_s: 2, channels: { Fz: -1 } },
     ]} />);
-    expect((html.match(/stroke="#5ed8e7"/g) ?? []).length).toBe(2);
+    expect((html.match(/stroke="#287794"/g) ?? []).length).toBe(2);
   });
 
   it('places positive microvolts above negative microvolts', () => {
@@ -71,7 +83,7 @@ describe('EEGChart', () => {
       { time_s: 0, channels: { Fz: 2 } },
       { time_s: 1, channels: { Fz: -2 } },
     ]} />);
-    const trace = html.match(/<path d="M[\d.]+,([\d.]+) L[\d.]+,([\d.]+)"[^>]*stroke="#5ed8e7"/);
+    const trace = html.match(/<path d="M[\d.]+,([\d.]+) L[\d.]+,([\d.]+)"[^>]*stroke="#287794"/);
     expect(trace).not.toBeNull();
     expect(Number(trace?.[1])).toBeLessThan(Number(trace?.[2]));
   });
@@ -80,7 +92,7 @@ describe('EEGChart', () => {
 describe('ERPChart', () => {
   it('shows an empty state without source or fake curves', () => {
     const html = renderToStaticMarkup(<ERPChart />);
-    expect(html).toContain('No ERP data available');
+    expect(html).toContain('No ERP Data Available');
     expect(html).not.toContain('erp-mean');
   });
 
@@ -93,13 +105,13 @@ describe('ERPChart', () => {
     expect(html).toContain('Pending · 1');
     expect(html).toContain('Provisional');
     expect(html).toContain('Baseline');
-    expect(html).toContain('P300 window');
-    expect(html).toContain('Mean P300 amplitude');
+    expect(html).toContain('P300 Window');
+    expect(html).toContain('P300-Window Mean Amplitude');
     expect(html).toContain('3 µV');
-    expect(html).toContain('Peak amplitude');
+    expect(html).toContain('Peak Amplitude');
     expect(html).toContain('3.6 µV');
     expect(html).toContain('400 ms');
-    expect(html).toContain('Shading = pointwise CI');
+    expect(html).toContain('Shading = Pointwise CI');
     expect((html.match(/class="erp-mean"/g) ?? []).length).toBe(3);
     expect((html.match(/class="erp-ci"/g) ?? []).length).toBe(3);
   });
@@ -119,6 +131,7 @@ describe('ERPChart', () => {
       peakLatencyMs: null,
     };
     const html = renderToStaticMarkup(<ERPChart data={data} baselineWindowMs={[-100, 50]} p300WindowMs={[250, 450]} />);
+    expect(html).toContain('P300 Window 250–450 ms');
     expect((html.match(/class="erp-mean"/g) ?? []).length).toBe(2);
     expect(html).not.toContain('class="erp-ci"');
     expect((html.match(/Unavailable/g) ?? []).length).toBe(3);
@@ -128,7 +141,8 @@ describe('ERPChart', () => {
 
   it('keeps unavailable summaries visible when no ERP means exist', () => {
     const html = renderToStaticMarkup(<ERPChart data={{ ...erpData, standard: [], deviant: [], difference: [], meanAmplitudeUv: null, peakAmplitudeUv: null, peakLatencyMs: null }} />);
-    expect(html).toContain('No ERP data available');
+    expect(html).toContain('Insufficient Data for an Averaged ERP');
+    expect(html).toContain('Accepted · 18');
     expect((html.match(/Unavailable/g) ?? []).length).toBe(3);
     expect(html).not.toContain('erp-mean');
   });

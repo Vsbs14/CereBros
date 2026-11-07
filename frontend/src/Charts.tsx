@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 
 /** Values are microvolts at the indicated time in seconds. A null channel value is a gap. */
 export interface EEGSample {
@@ -20,6 +20,8 @@ export interface EEGChartProps {
   channelMap?: Record<string, string>;
   markers?: EEGMarker[];
   source?: string;
+  /** Context-specific guidance shown when no samples are available, e.g. what is needed to start a stream. */
+  emptyDetail?: ReactNode;
   className?: string;
 }
 
@@ -56,51 +58,32 @@ export interface ERPChartProps {
   data?: ERPData | null;
   baselineWindowMs?: readonly [number, number];
   p300WindowMs?: readonly [number, number];
+  /** Context-specific guidance shown when no ERP data is available. */
+  emptyDetail?: ReactNode;
   className?: string;
 }
 
 const C = {
-  panel: '#101c33',
-  plot: '#0b162a',
-  border: '#293b58',
-  grid: '#263853',
-  text: '#e8f0fc',
-  muted: '#9aacc6',
-  cyan: '#5ed8e7',
-  violet: '#b69aff',
-  amber: '#ffc879',
-  green: '#79d6af',
+  panel: '#ffffff',
+  plot: '#f4f8fa',
+  border: '#ccdbe2',
+  grid: '#dae5eb',
+  text: '#253c48',
+  muted: '#526975',
+  cyan: '#287794',
+  violet: '#795daa',
+  amber: '#a9503f',
+  green: '#348269',
 };
 
 const panelStyle: CSSProperties = {
   background: C.panel,
-  border: `1px solid ${C.border}`,
-  borderRadius: 18,
+  border: 0,
+  borderRadius: 0,
   color: C.text,
-  fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif',
-  padding: '18px 20px 16px',
-  boxShadow: '0 12px 36px rgba(3, 10, 24, 0.18)',
-};
+  fontFamily: 'inherit',
+  padding: '0',
 
-const headerStyle: CSSProperties = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'flex-start',
-  gap: 16,
-  flexWrap: 'wrap',
-  marginBottom: 12,
-};
-
-const badgeStyle: CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  border: `1px solid ${C.border}`,
-  borderRadius: 999,
-  background: '#172640',
-  padding: '5px 10px',
-  color: C.muted,
-  fontSize: 12,
-  fontWeight: 600,
 };
 
 function finite(value: unknown): value is number {
@@ -117,24 +100,20 @@ function extent(values: number[]): [number, number] {
   return min === max ? [min - 0.5, max + 0.5] : [min, max];
 }
 
-function emptyState(message: string) {
-  return (
-    <div className="chart-empty" style={{ alignItems: 'center', background: C.plot, border: `1px dashed ${C.border}`, borderRadius: 12, color: C.muted, display: 'flex', justifyContent: 'center', minHeight: 210, textAlign: 'center' }}>
-      {message}
-    </div>
-  );
+function emptyState(message: string, detail?: ReactNode) {
+  return <div className="chart-empty"><strong>{message}</strong>{detail && <p>{detail}</p>}</div>;
 }
 
 function chartHeader(title: string, subtitle: string, badges: string[]) {
   return (
-    <div className="chart-header" style={headerStyle}>
+    <div className="chart-header">
       <div>
-        <div style={{ color: C.text, fontSize: 17, fontWeight: 700, letterSpacing: '-0.02em' }}>{title}</div>
-        <div style={{ color: C.muted, fontSize: 12, marginTop: 3 }}>{subtitle}</div>
+        <div className="chart-title">{title}</div>
+        <div className="chart-subtitle">{subtitle}</div>
       </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-        {badges.map((badge) => <span className="chart-badge" style={badgeStyle} key={badge}>{badge}</span>)}
-      </div>
+      {badges.length > 0 && <div className="chart-badges">
+        {badges.map((badge) => <span className="chart-badge" key={badge}>{badge}</span>)}
+      </div>}
     </div>
   );
 }
@@ -155,13 +134,16 @@ function lineSegments<T>(points: T[], value: (point: T) => [number, number] | nu
   return segments;
 }
 
-export function EEGChart({ samples = [], channels, channelMap, markers = [], source, className }: EEGChartProps) {
+export function EEGChart({ samples = [], channels, channelMap, markers = [], source, emptyDetail, className }: EEGChartProps) {
   const ordered = [...samples].filter((sample) => finite(sample.time_s)).sort((a, b) => a.time_s - b.time_s);
   const names = [...new Set([...(channels ?? []), ...ordered.flatMap((sample) => Object.keys(sample.channels))])];
-  const badges = [source ? `Source · ${source}` : 'Source unavailable', `${names.length} channels`];
-  const title = chartHeader('EEG signals', 'Time (s) · amplitude (µV), positive up', badges);
+  const subtitle = 'Time (s) · Amplitude (µV), Positive Up';
   if (!ordered.length || !names.length) {
-    return <section className={`eeg-chart ${className ?? ''}`.trim()} style={panelStyle}>{title}{emptyState('No EEG data available')}</section>;
+    return <section className={`eeg-chart ${className ?? ''}`.trim()} style={panelStyle}>{chartHeader('Continuous EEG', subtitle, [])}{emptyState('No EEG Data Available', emptyDetail)}</section>;
+  }
+  const title = chartHeader('Continuous EEG', subtitle, [source ? `Source · ${source}` : 'Source Unavailable', `${names.length} Channels`]);
+  if (!ordered.some((sample) => names.some((name) => finite(sample.channels[name])))) {
+    return <section className={`eeg-chart ${className ?? ''}`.trim()} style={panelStyle}>{title}{emptyState('Signal Unavailable', 'Samples are arriving without valid values on any channel. Check electrode contact and the headset connection.')}</section>;
   }
 
   const width = 960;
@@ -244,17 +226,18 @@ function summaryValue(value: number | null | undefined, unit: string): string {
 }
 
 function erpMetrics(data: ERPData) {
-  return <div className="erp-metrics" style={{ display: 'flex', flexWrap: 'wrap', gap: 20 }}>
-    <span style={{ color: C.muted, fontSize: 12 }}>Mean P300 amplitude <strong style={{ color: C.text, display: 'block', fontSize: 16, marginTop: 2 }}>{summaryValue(data.meanAmplitudeUv, 'µV')}</strong></span>
-    <span style={{ color: C.muted, fontSize: 12 }}>Peak amplitude <strong style={{ color: C.text, display: 'block', fontSize: 16, marginTop: 2 }}>{summaryValue(data.peakAmplitudeUv, 'µV')}</strong></span>
-    <span style={{ color: C.muted, fontSize: 12 }}>Peak latency <strong style={{ color: C.text, display: 'block', fontSize: 16, marginTop: 2 }}>{summaryValue(data.peakLatencyMs, 'ms')}</strong></span>
+  return <div className="erp-metrics">
+    <span>P300-Window Mean Amplitude <strong>{summaryValue(data.meanAmplitudeUv, 'µV')}</strong></span>
+    <span>Peak Amplitude <strong>{summaryValue(data.peakAmplitudeUv, 'µV')}</strong></span>
+    <span>Peak Latency <strong>{summaryValue(data.peakLatencyMs, 'ms')}</strong></span>
   </div>;
 }
 
-export function ERPChart({ data, baselineWindowMs = [-200, 0], p300WindowMs = [300, 600], className }: ERPChartProps) {
-  const heading = chartHeader('Event-related potential', 'Time (ms) · amplitude (µV), positive up', data ? [`Channel · ${data.channel}`, `Source · ${data.source}`, ...((data.provisional ?? data.counts.pending > 0) ? ['Provisional'] : [])] : []);
+export function ERPChart({ data, baselineWindowMs = [-200, 0], p300WindowMs = [300, 600], emptyDetail, className }: ERPChartProps) {
+  const subtitle = `Time (ms) · Amplitude (µV), Positive Up · P300 Window ${tick(p300WindowMs[0])}–${tick(p300WindowMs[1])} ms`;
+  const heading = chartHeader('Averaged ERP', subtitle, data ? [`Channel · ${data.channel}`, `Source · ${data.source}`, ...((data.provisional ?? data.counts.pending > 0) ? ['Provisional'] : [])] : []);
   if (!data) {
-    return <section className={`erp-chart ${className ?? ''}`.trim()} style={panelStyle}>{heading}{emptyState('No ERP data available')}</section>;
+    return <section className={`erp-chart ${className ?? ''}`.trim()} style={panelStyle}>{heading}{emptyState('No ERP Data Available', emptyDetail)}</section>;
   }
 
   const curves: Curve[] = [
@@ -266,13 +249,13 @@ export function ERPChart({ data, baselineWindowMs = [-200, 0], p300WindowMs = [3
   const all = sorted.flatMap((curve) => curve.points);
   const hasMean = all.some((point) => finite(point.mean_uv));
   const counts = data.counts;
-  const countBadges = <div className="erp-counts" style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginBottom: 14 }}>
-    <span style={badgeStyle}>Accepted · {counts.accepted}</span>
-    <span style={badgeStyle}>Rejected · {counts.rejected}</span>
-    <span style={badgeStyle}>Pending · {counts.pending}</span>
+  const countBadges = <div className="erp-counts">
+    <span className="chart-badge">Accepted · {counts.accepted}</span>
+    <span className="chart-badge">Rejected · {counts.rejected}</span>
+    <span className="chart-badge">Pending · {counts.pending}</span>
   </div>;
   if (!hasMean) {
-    return <section className={`erp-chart ${className ?? ''}`.trim()} style={panelStyle}>{heading}{countBadges}{emptyState('No ERP data available')}<div style={{ marginTop: 16 }}>{erpMetrics(data)}</div></section>;
+    return <section className={`erp-chart ${className ?? ''}`.trim()} style={panelStyle}>{heading}{countBadges}{emptyState('Insufficient Data for an Averaged ERP', 'Further accepted standard and deviant trials are needed before an average can be shown.')}{erpMetrics(data)}</section>;
   }
 
   const width = 960;
@@ -306,9 +289,9 @@ export function ERPChart({ data, baselineWindowMs = [-200, 0], p300WindowMs = [3
         <svg viewBox={`0 0 ${width} ${height}`} style={{ display: 'block', minWidth: 650, width: '100%' }} role="img" aria-label={`ERP standard, deviant, and difference for ${data.channel} from ${tick(minTime)} to ${tick(maxTime)} milliseconds`}>
           <rect x={left} y={top} width={plotWidth} height={plotHeight} rx={8} fill={C.plot} />
           {baseline && <g className="erp-baseline-window"><rect x={baseline.x} y={top} width={baseline.width} height={plotHeight} fill={C.cyan} opacity={0.07} /><text x={baseline.x + 7} y={top + 16} fill={C.muted} fontSize={11}>Baseline</text></g>}
-          {p300 && <g className="erp-p300-window"><rect x={p300.x} y={top} width={p300.width} height={plotHeight} fill={C.amber} opacity={0.09} /><text x={p300.x + 7} y={top + 16} fill={C.amber} fontSize={11}>P300 window</text></g>}
+          {p300 && <g className="erp-p300-window"><rect x={p300.x} y={top} width={p300.width} height={plotHeight} fill={C.amber} opacity={0.09} /><text x={p300.x + 7} y={top + 16} fill={C.amber} fontSize={11}>P300 Window</text></g>}
           {xTicks.map((time, index) => <g key={index}><line x1={x(time)} x2={x(time)} y1={top} y2={top + plotHeight} stroke={C.grid} /><text x={x(time)} y={height - 28} textAnchor="middle" fill={C.muted} fontSize={12}>{tick(time)}</text></g>)}
-          {yTicks.map((uv, index) => <g key={index}><line x1={left} x2={left + plotWidth} y1={y(uv)} y2={y(uv)} stroke={uv === 0 ? '#536984' : C.grid} strokeWidth={uv === 0 ? 1.5 : 1} /><text x={left - 10} y={y(uv) + 4} textAnchor="end" fill={C.muted} fontSize={11}>{tick(uv)}</text></g>)}
+          {yTicks.map((uv, index) => <g key={index}><line x1={left} x2={left + plotWidth} y1={y(uv)} y2={y(uv)} stroke={uv === 0 ? '#8097a3' : C.grid} strokeWidth={uv === 0 ? 1.5 : 1} /><text x={left - 10} y={y(uv) + 4} textAnchor="end" fill={C.muted} fontSize={11}>{tick(uv)}</text></g>)}
           {sorted.map((curve) => <g key={curve.key} className={`erp-curve erp-${curve.key}`}>
             {ciAreas(curve.points, x, y).map((path, index) => <path key={`ci-${index}`} className="erp-ci" d={path} fill={curve.color} opacity={0.15} />)}
             {lineSegments(curve.points, (point) => finite(point.mean_uv) ? [x(point.time_ms), y(point.mean_uv)] : null).map((path, index) => <path key={`mean-${index}`} className="erp-mean" d={path} fill="none" stroke={curve.color} strokeWidth={curve.key === 'difference' ? 3 : 2.4} strokeLinecap="round" strokeLinejoin="round" />)}
@@ -317,10 +300,10 @@ export function ERPChart({ data, baselineWindowMs = [-200, 0], p300WindowMs = [3
           <text x={left + plotWidth} y={height - 6} textAnchor="end" fill={C.muted} fontSize={11}>Time (ms)</text>
         </svg>
       </div>
-      <div className="erp-footer" style={{ alignItems: 'center', display: 'flex', flexWrap: 'wrap', gap: '12px 26px', justifyContent: 'space-between', marginTop: 10 }}>
-        <div className="erp-legend" style={{ display: 'flex', flexWrap: 'wrap', gap: 16, color: C.muted, fontSize: 12 }}>
-          {curves.map((curve) => <span key={curve.key} style={{ alignItems: 'center', display: 'inline-flex', gap: 7 }}><span aria-hidden="true" style={{ background: curve.color, borderRadius: 3, display: 'inline-block', height: 3, width: 18 }} />{curve.label}</span>)}
-          <span>Shading = pointwise CI</span>
+      <div className="erp-footer">
+        <div className="erp-legend">
+          {curves.map((curve) => <span key={curve.key}><span aria-hidden="true" style={{ background: curve.color, borderRadius: 3, display: 'inline-block', height: 3, width: 18 }} />{curve.label}</span>)}
+          <span>Shading = Pointwise CI</span>
         </div>
         {erpMetrics(data)}
       </div>
