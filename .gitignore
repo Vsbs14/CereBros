@@ -224,3 +224,7 @@ node_modules/
 *.tsbuildinfo
 temp/
 /frontend/dist/
+
+# Regenerate with: python -m tools.quick_oddball --write-wav
+tools/*.wav
+tools/*.schedule.csv

@@ -41,7 +41,28 @@ Connect the board by a data-capable USB cable and follow the manufacturer's elec
 
 In **Settings**, disconnect simulation, select **LIVE HARDWARE**, enter the serial port (`/dev/ttyACM0`, a macOS `/dev/cu...` path, or `COM3` on Windows), and provide **eight labels** matching physical channel placement plus the electrode reference. Click **Connect source**; the paced manufacturer startup sequence takes about 20 seconds.
 
-Under analysis settings, select **only the physically connected EEG channels**, using channel numbers 1–8 separated by commas. Example: `2,3` analyzes the second and third board channels. All eight acquired channels remain in the original recording. Any bad selected channel rejects that entire epoch. Check the live signal before beginning.
+Before connecting, set **Channels with electrodes attached** (numbers 1–8, comma separated, e.g. `1,2`). Only these channels are switched on and routed to the bias (RLD) drive, shown on charts, checked and analyzed; floating channels routed to RLD add noise to every channel. All eight acquired channels remain in the original recording. Any bad selected channel rejects that entire epoch.
+
+The app uses BrainFlow's `NEUROPAWN_KNIGHT_BOARD_IMU`. Set `NEUROLINGO_KNIGHT_BOARD=knight` for a plain Knight board. BrainFlow 5.23 and earlier report Knight values about 80× too large (missing front-end gain, fixed upstream in brainflow-dev/brainflow#867); the backend corrects this automatically for those versions (override with `NEUROLINGO_KNIGHT_SCALE_FIX=0` or `1`). BrainFlow's own log is written to `temp/data/brainflow.log`.
+
+### Signal check
+
+Run **Signal check** (Settings or Sound Recognition) right before each experiment. It analyzes the last 5 seconds and reports, per channel, clipping, power-line hum, 1–30 Hz amplitude and the share of 1-second windows that would pass the artifact rule. Starting a hardware experiment requires a passing check from the last 10 minutes (a testing-only override exists). It predicts artifact rejection only; it does not measure impedance. A good first test is ECG: one channel on the left wrist, reference on the right wrist, bias on a forearm; a steady spike about once a second confirms the wiring.
+
+The artifact rule ignores the electrode DC offset (linear detrend) and power-line hum (50/60 Hz notches on continuous data), but rejects any epoch that touches the input limit, since filtering cannot restore clipped samples.
+
+### Quick test without the web app
+
+Stop the server and close the NeuroPawn visualizer (only one program can use the port), then:
+
+```bash
+python -m tools.quick_oddball --port COM3 --channels 1,2          # check, 40 tones, analysis
+python -m tools.quick_oddball --port COM3 --channels 1,2 --check-only
+python -m tools.quick_oddball --simulate                           # no board
+python -m tools.quick_oddball --write-wav                          # tools/oddball_60s.wav + schedule
+```
+
+Results are saved to `temp/quick_tests/`. The WAV is for listening while watching the NeuroPawn visualizer; that app's recordings carry no timestamps, so they cannot be aligned with the tones for ERP analysis.
 
 For the Spanish word pair, select **Caballo / cabello**, upload a distinct standard `caballo` recording and deviant `cabello` recording, and preview both. Recordings are decoded locally, must be shorter than the stimulus interval, and their SHA-256 identities are saved in session metadata. No prerecorded word files are bundled.
 

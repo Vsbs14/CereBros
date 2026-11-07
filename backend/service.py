@@ -1,4 +1,5 @@
 import copy
+from collections import deque
 from pathlib import Path
 import secrets
 import threading
@@ -7,7 +8,8 @@ import uuid
 
 import numpy as np
 
-from .analysis import analyze
+from .analysis import MAX_SAMPLE_STEP, analyze
+from .signal_check import check_signal
 from .device import Device
 from .models import AnalysisConfig, ConnectRequest, SessionRequest, StimulusEventRequest, StopRequest
 from .storage import Store
@@ -31,6 +33,7 @@ class Service:
         self.sample_count = 0
         self.sequence = 0
         self.latest = None
+        self.recent = deque()  # (timestamps, values) batches for the pre-experiment signal check
         self.stop_event = threading.Event()
         self.worker = threading.Thread(target=self._run, daemon=True, name="eeg-acquisition")
         self.worker.start()
@@ -53,6 +56,9 @@ class Service:
                         if not np.isfinite(ts).all() or not np.isfinite(values).all():
                             raise ValueError("Device returned nonfinite EEG samples")
                         self.device.last_sample = float(ts[-1])
+                        self.recent.append((ts.copy(), values.copy()))
+                        while self.recent and self.recent[-1][0][-1] - self.recent[0][0][-1] > 15:
+                            self.recent.popleft()
                         self.sequence += 1
                         self.latest = {"type": "eeg", "sequence": self.sequence, "source": self.device.source,
                                        "sampling_rate": self.device.sampling_rate, "channel_labels": self.device.labels,
@@ -96,6 +102,7 @@ class Service:
         with self.lock:
             self.device.connect(request)
             self.latest = None
+            self.recent.clear()
             return self.device.status()
 
     def disconnect(self):
@@ -104,6 +111,29 @@ class Service:
                 self._finish("interrupted", "Device disconnected during acquisition.")
             self.device.disconnect()
             return self.device.status()
+
+    def signal_check(self, seconds: float = 5.0, channels: list[int] | None = None):
+        """channels are zero-based, like AnalysisConfig.channel_indices."""
+        with self.lock:
+            if self.device.source is None:
+                raise ValueError("Connect a source before running a signal check")
+            batches = list(self.recent)
+            fs, labels = self.device.sampling_rate, list(self.device.labels)
+        channels = list(range(len(labels))) if channels is None else channels
+        if any(c < 0 or c >= len(labels) for c in channels) or len(set(channels)) != len(channels):
+            raise ValueError("Signal check channels must be unique zero-based indices between 0 and 7")
+        if not batches:
+            return check_signal([], [[]], fs, labels, channels)
+        times = np.concatenate([b[0] for b in batches])
+        values = np.concatenate([b[1] for b in batches])
+        keep = times >= times[-1] - seconds
+        times, values = times[keep], values[keep]
+        # Use only the most recent unbroken stretch; gaps would distort the windows.
+        gaps = np.where(np.diff(times) > MAX_SAMPLE_STEP / fs)[0]
+        if len(gaps):
+            times, values = times[gaps[-1] + 1:], values[gaps[-1] + 1:]
+        result = check_signal(times, values, fs, labels, channels)
+        return {**result, "source": self.device.source, "checked_at": time.time()}
 
     def start(self, request: SessionRequest):
         with self.lock:

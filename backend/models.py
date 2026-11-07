@@ -12,11 +12,17 @@ class ConnectRequest(Model):
     serial_port: str = Field(default="", max_length=200)
     electrode_reference: str = Field(default="Unspecified", min_length=1, max_length=100)
     electrode_labels: list[str] = Field(default_factory=lambda: [f"CH{i}" for i in range(1, 9)], min_length=8, max_length=8)
+    # One-based board channels with electrodes attached. Only these are switched on and routed
+    # to the bias drive (RLD), matching the NeuroPawn visualizer. Floating channels routed into
+    # RLD inject noise into every channel.
+    active_channels: list[int] = Field(default_factory=lambda: list(range(1, 9)), min_length=1, max_length=8)
 
     @model_validator(mode="after")
     def validate_hardware(self):
         if self.source == "hardware" and not self.serial_port.strip():
             raise ValueError("A serial port is required for hardware")
+        if len(set(self.active_channels)) != len(self.active_channels) or any(c < 1 or c > 8 for c in self.active_channels):
+            raise ValueError("Active channels must be unique board channel numbers between 1 and 8")
         if any(not s.strip() or len(s) > 30 for s in self.electrode_labels):
             raise ValueError("Provide eight nonempty electrode labels, each at most 30 characters")
         return self

@@ -53,8 +53,10 @@ describe('EEGChart', () => {
     expect(html).toContain('Parietal');
     expect(html).toContain('Oddball');
     expect(html).toContain('Time (s)');
-    expect(html).toContain('Scale ±2 µV');
-    expect((html.match(/stroke="#5ed8e7"/g) ?? []).length).toBe(2);
+    expect(html).toMatch(/Lane height ±\d+ µV/);
+    // One colour per channel lane.
+    expect((html.match(/stroke="#5ed8e7"/g) ?? []).length).toBe(1);
+    expect((html.match(/stroke="#b69aff"/g) ?? []).length).toBe(1);
   });
 
   it('breaks a trace at null rather than joining across missing samples', () => {
@@ -74,6 +76,20 @@ describe('EEGChart', () => {
     const trace = html.match(/<path d="M[\d.]+,([\d.]+) L[\d.]+,([\d.]+)"[^>]*stroke="#5ed8e7"/);
     expect(trace).not.toBeNull();
     expect(Number(trace?.[1])).toBeLessThan(Number(trace?.[2]));
+  });
+});
+
+describe('EEGChart lanes', () => {
+  it('removes each channel offset so a large DC offset does not squash other channels', () => {
+    const html = renderToStaticMarkup(<EEGChart samples={[0, 1, 2, 3].map((t) => ({ time_s: t, channels: { CH1: -50000 + (t % 2 ? 10 : -10), CH2: t % 2 ? 10 : -10 } }))} />);
+    expect(html).toContain('Lane height ±10 µV');
+    expect(html).not.toContain('clipped');
+  });
+
+  it('marks channels that exceed a fixed scale as clipped and only shows requested channels', () => {
+    const html = renderToStaticMarkup(<EEGChart scaleUv={10} channels={['CH2']} samples={[0, 1, 2].map((t) => ({ time_s: t, channels: { CH1: 0, CH2: t * 100 } }))} />);
+    expect(html).toContain('clipped');
+    expect(html).toContain('1 channels');
   });
 });
 

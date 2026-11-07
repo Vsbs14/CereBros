@@ -7,6 +7,8 @@ export interface Device {active_session_id?:string|null;source:Source|null; conn
 export interface AnalysisConfig {channel_indices:number[]|null; epoch_start_ms:number; epoch_end_ms:number; baseline_start_ms:number; baseline_end_ms:number; p300_start_ms:number; p300_end_ms:number; min_trials_per_condition?:number}
 export interface Metric {channel_index:number; electrode:string; condition:string; window_mean_uv:number|null; mean_ci95_half_width_uv:number|null; peak_amplitude_uv:number|null; peak_latency_ms:number|null}
 export interface Analysis {source:Source; channel_labels:string[]; time_ms:number[]; finalized:boolean; quality:string; config:AnalysisConfig; counts:{accepted:{standard:number;deviant:number};rejected:number;pending:number;presented:number}; waveforms:Record<string,{mean_uv:number[][];ci95_half_width_uv:number[][]|null}|null>; metrics:Metric[]; warnings:string[]; trial_quality:{trial_index:number;condition:string;status:string;reasons:string[]}[]}
+export interface SignalChannel {channel:number;label:string;status:'good'|'fair'|'bad';predicted_acceptance:number;eeg_rms_uv:number;line_noise_rms_uv:number;offset_uv:number;saturated_fraction:number;problems:string[]}
+export interface SignalCheck {ready:boolean;overall:'good'|'fair'|'bad'|'insufficient_data';seconds_analyzed:number;channels:SignalChannel[];advice:string[];note:string;source?:Source;checked_at?:number}
 export interface Trial {trial_index:number;condition:'standard'|'deviant'}
 export interface Session {id:string; student_id:string; source:Source; status:'recording'|'completed'|'interrupted'; started_at:number; ended_at:number|null; channel_labels:string[]; warnings:string[]; request:{trials:number;interval_s:number;sound_pair_id:string;analysis:AnalysisConfig}; trial_plan:Trial[]; events:{trial_index:number;onset_timestamp:number;condition:string;canceled?:boolean}[]; analysis:Analysis|null}
 export interface EEGMessage {type:'eeg';sequence:number;source:Source;sampling_rate:number;channel_labels:string[];timestamps:number[];samples:number[][];units:'microvolts'}
@@ -17,7 +19,9 @@ export async function request<T>(path:string, body?:unknown, signal?:AbortSignal
 }
 export const api = {
   device:()=>request<Device>('/api/device'),
-  connect:(body:unknown)=>request<Device>('/api/device/connect',body),
+  // Hardware startup sends paced commands to the board; allow well over the nominal ~20 s.
+  connect:(body:unknown)=>request<Device>('/api/device/connect',body,AbortSignal.timeout(120000)),
+  signalCheck:(channels:number[],seconds=5)=>request<SignalCheck>(`/api/device/signal-check?seconds=${seconds}&channels=${channels.join(',')}`),
   disconnect:()=>request<Device>('/api/device/disconnect',{}),
   students:()=>request<Student[]>('/api/students'),
   student:(name:string)=>request<Student>('/api/students',{name}),

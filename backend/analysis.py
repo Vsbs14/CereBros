@@ -6,9 +6,13 @@ from scipy.signal import butter, sosfiltfilt
 from scipy.stats import t as student_t
 
 from .models import AnalysisConfig
+from .signal_check import epoch_artifacts, remove_line_noise
 
 
-PIPELINE_VERSION = "1.0.0"
+PIPELINE_VERSION = "1.3.0"
+# Host-side timestamps jitter by a few ms around the 8 ms sample period. Treat a step as a gap
+# only when at least one whole sample is missing (more than 2.5 sample periods apart).
+MAX_SAMPLE_STEP = 2.5
 
 
 def summarize(epochs: np.ndarray) -> tuple[np.ndarray, np.ndarray | None]:
@@ -50,15 +54,17 @@ def analyze(timestamps, samples, events, sampling_rate, labels, config: Analysis
         warnings.append("Verify electrode reference and acquisition bandwidth; software cannot recover attenuated frequencies.")
     # Filter separately across gaps, never interpolate across missing data or nonfinite values.
     filtered = np.full_like(data, np.nan)
+    dehummed = np.full_like(data, np.nan)  # hum removed, offset kept; used only for artifact checks
     invalid = np.ones(len(times), dtype=bool)
     if len(times) > 1:
         invalid = ~np.isfinite(data).all(axis=1) | ~np.isfinite(times)
-        breaks = np.where((np.diff(times) > 1.5 / fs) | (np.diff(times) <= 0) | invalid[:-1] | invalid[1:])[0] + 1
+        breaks = np.where((np.diff(times) > MAX_SAMPLE_STEP / fs) | (np.diff(times) <= 0) | invalid[:-1] | invalid[1:])[0] + 1
         for segment in np.split(np.arange(len(times)), breaks):
             if len(segment) < max(30, int(fs)) or invalid[segment].any():
                 continue
             sos = butter(4, [config.low_hz, config.high_hz], btype="bandpass", fs=fs, output="sos")
             filtered[segment] = sosfiltfilt(sos, data[segment], axis=0)
+            dehummed[segment] = remove_line_noise(data[segment], fs)
     for event in events:
         record = {"trial_index": event["trial_index"], "condition": event["condition"], "status": "rejected", "reasons": []}
         if event.get("canceled"):
@@ -85,16 +91,14 @@ def analyze(timestamps, samples, events, sampling_rate, labels, config: Analysis
             epoch_times = times[inds]
             if not np.isfinite(raw).all() or not np.isfinite(filtered[inds]).all():
                 reasons.append("nonfinite_or_short_filter_segment")
-            if np.any(np.diff(epoch_times) <= 0) or np.any(np.diff(epoch_times) > 1.5 / fs) or abs(times[idx] - onset) > 0.75 / fs:
+            if np.any(np.diff(epoch_times) <= 0) or np.any(np.diff(epoch_times) > MAX_SAMPLE_STEP / fs) or abs(times[idx] - onset) > 0.75 / fs:
                 reasons.append("sample_gap_or_onset_alignment")
-            # Reject raw artifacts before filtering can smooth them away.
+            # Reject raw artifacts before filtering can smooth them away. The raw epoch is linearly
+            # detrended first: DC-coupled boards carry electrode offsets of thousands of µV that are
+            # not artifacts. Spikes, line noise and movement still count. Shared with signal_check.
             if np.isfinite(raw).all():
-                if (np.ptp(raw, axis=0) > config.artifact_peak_to_peak_uv).any():
-                    reasons.append("peak_to_peak_artifact")
-                if (np.abs(raw) > config.artifact_absolute_uv).any():
-                    reasons.append("absolute_amplitude_artifact")
-                if (raw.std(axis=0) <= config.flatline_std_uv).any():
-                    reasons.append("flatline")
+                clean = dehummed[inds] if np.isfinite(dehummed[inds]).all() else None
+                reasons.extend(epoch_artifacts(raw, config, clean))
             # Boundary padding protects against severe edge transients. Final and provisional results share this rule.
             margin = int(fs * 0.5)
             left, right = max(0, inds[0] - margin), min(len(times), inds[-1] + margin + 1)
@@ -102,7 +106,7 @@ def analyze(timestamps, samples, events, sampling_rate, labels, config: Analysis
                 if not finalized and inds[-1] + margin >= len(times):
                     record["status"] = "pending"
                 reasons.append("filter_edge_margin")
-            elif np.any(np.diff(times[left:right]) > 1.5 / fs) or not np.isfinite(filtered[left:right]).all():
+            elif np.any(np.diff(times[left:right]) > MAX_SAMPLE_STEP / fs) or not np.isfinite(filtered[left:right]).all():
                 reasons.append("filter_segment_edge")
             if not reasons:
                 epoch = filtered[inds].copy()
