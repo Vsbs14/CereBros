@@ -40,7 +40,10 @@ export interface ApiOptions {
 }
 
 const env = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
-export const API_BASE_URL = env?.VITE_API_URL?.trim() || 'http://127.0.0.1:8000';
+function savedApiUrl(): string | null {
+  try {return typeof localStorage === 'undefined' ? null : localStorage.getItem('neurolingo-api-url')} catch {return null}
+}
+export const API_BASE_URL = savedApiUrl() || env?.VITE_API_URL?.trim() || 'http://127.0.0.1:8000';
 
 function isObject(value: unknown): value is JsonObject {
   return value !== null && typeof value === 'object' && !Array.isArray(value);

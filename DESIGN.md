@@ -1,6 +1,6 @@
 ---
 name: "NeuroLingo"
-description: "A welcoming ESL workspace for listening practice and scientific observation."
+description: "A welcoming workspace for listening practice and scientific observation."
 colors:
   accent: "#ee9b89"
   accent-hover: "#f5b2a3"
@@ -129,7 +129,7 @@ components:
 
 **Creative North Star: "An open learning workspace"**
 
-A welcoming ESL workspace for schools and learning centres: warm white, gentle blue navigation, soft green preparation, and salmon as the strongest action accent. This replaces the former dark-navy direction.
+A welcoming listening-practice workspace for schools and learning centres: warm white, gentle blue navigation, soft green preparation, and salmon as the strongest action accent. This replaces the former dark-navy direction.
 
 Use broad spacing, concise labels, and quiet flat surfaces. Remove redundant subcaptions; put supplemental explanation in disclosures while keeping status, chart units, and essential limitations available. EEG and ERP remain prominent without making the interface feel like a laboratory console.
 
@@ -150,11 +150,13 @@ Epilogue (Google Fonts, 400–700, shared with the NeuroPawn docs) with the Sego
 
 ## Layout
 
-Desktop uses a fixed sidebar (216px) and a top bar (56px); the brand sits on the top bar's centre line. Main content is left-aligned to the top bar's inline padding (32px) and capped at (1560px). The top bar holds the only global EEG connection indicator (status dot + label, Reconnect, Details popover); pages never repeat it. Pages: Home is a single full-height welcome panel: the NeuroLingo mark in a white tile, "Welcome to NeuroLingo", one line of purpose, and Start Setup / How It Works buttons. Nothing else lives there. Overview holds the four Set Up a Session step cards, status tiles for backend, source, P300 window and timing, the listening-response charts, and recent sessions. How It Works holds the session diagram, electrode guide, sound-pair cards, EEG/ERP/limitations explainers, and NeuroPawn resources. Sections and grid items fade up 14px as they scroll into view (script-added classes, removed once settled; skipped with reduced motion), then the task pages. Every page uses one vertical rhythm (`--section-gap` 32px, `--grid-gap` 24px) and one content width (`--content-max` 1600px, centred via the shared `--gutter` used by both the top bar and the page), so side-by-side cards share row heights. Earlier overview layout, for reference: a compact one-row preparation band (three steps + primary action), the listening-response panels, then recent sessions as a divided list. Empty EEG/ERP panels sit side by side at a compact height; as soon as either renders a plot, the grid becomes single-column so each chart gets full width. At (1180px) the sidebar narrows (196px), page padding becomes (24px), cards stack, and the preparation action wraps below the steps. At (960px) panels stack. At (900px) navigation moves above content. At (600px) nav becomes a two-column grid and preparation steps stack. Scientific plots retain (650px) minimum width inside local scrollers.
+Desktop uses a fixed sidebar (216px) and a top bar (56px); the brand sits on the top bar's centre line. Main content is left-aligned to the top bar's inline padding (32px) and capped at (1560px). The top bar holds the only global EEG connection indicator (status dot + label, Reconnect, Details popover); pages never repeat it. Pages: Home is a single full-height welcome panel (the NeuroLingo mark, "Welcome to NeuroLingo", one line of purpose, Start Setup / How It Works). Dashboard holds the four Set Up a Session step cards (student, source, signal check, start), status tiles for source, selected student, recording state and timing, the listening-response charts with display-filter and scale controls, and recent sessions. Task pages are Sound Recognition, Live EEG, Students, Session History and Settings. How It Works holds the session diagram, electrode guide, sound-pair cards, EEG/ERP/limitations explainers, and NeuroPawn resources. Sections and grid items fade up 14px as they scroll into view (script-added classes, removed once settled; skipped with reduced motion), then the task pages. Every page uses one vertical rhythm (`--section-gap` 32px, `--grid-gap` 24px) and one content width (`--content-max` 1600px, centred via the shared `--gutter` used by both the top bar and the page), so side-by-side cards share row heights. Earlier overview layout, for reference: a compact one-row preparation band (three steps + primary action), the listening-response panels, then recent sessions as a divided list. Empty EEG/ERP panels sit side by side at a compact height; as soon as either renders a plot, the grid becomes single-column so each chart gets full width. At (1180px) the sidebar narrows (196px), page padding becomes (24px), cards stack, and the preparation action wraps below the steps. At (960px) panels stack. At (900px) navigation moves above content. At (600px) nav becomes a two-column grid and preparation steps stack. Scientific plots retain (650px) minimum width inside local scrollers.
 
 ## Elevation & Depth
 
-Influenced by the NeuroPawn docs (docs.neuropawn.tech): a warm cream canvas (#fbf4e9) with soft fixed blue, green and coral radial tints, and subtly frosted surfaces over it. The sidebar, sticky top bar, cards and the preparation band use translucent fills (68–82% white or their own tint) with `backdrop-filter: blur(14px)`, falling back to solid colours where it is unsupported. Signal panels stay solid white so the data is never tinted. Cards carry a stronger border (#c9d6db) and a soft two-layer shadow (`--shadow-card`); interactive cards lift 2px with a coral border on hover. Transitions use (160ms ease-out). Reduced motion removes transitions and lifts.
+Influenced by the NeuroPawn docs (docs.neuropawn.tech): a flat warm cream canvas (#fbf4e9) with no gradients, and subtly frosted surfaces over it. The sidebar, sticky top bar, cards and step cards use translucent fills with `backdrop-filter: blur(14px)`, falling back to solid colours where it is unsupported. Signal panels stay solid so data is never tinted. Cards carry a stronger border and a soft two-layer shadow (`--shadow-card`); interactive cards lift 2px with a coral border on hover. Transitions use (160ms ease-out). Reduced motion removes transitions and lifts.
+
+**Dark mode.** Follows the system setting until the user picks a theme with the sun/moon toggle in the top bar (saved as `neurolingo-theme`); index.html applies it before mount so there is no flash. `:root[data-theme="dark"]` redefines tokens only: canvas #12181c, surface #1b2328, lines #2c3940 / #3a4a52, text #e6edf0 / #c3d0d6 / #93a6af, translucent coral active nav with #f8d3c9 ink, prep green #1f2e26 with #8fc4a6 ink, coral accent unchanged, brighter series (signal #5fb3d4, deviant #a88be0, difference #e5806b, response #5cbf98). Charts keep light-mode SVG attribute colours as defaults and are re-themed through classes (`chart-plot`, `chart-grid`, `chart-text`, `lane-0…7`, `erp-standard/deviant/difference`, `marker-*`); lanes use deep hues in light mode and bright hues in dark. Every colour outside the two palette blocks is a token.
 
 ## Shapes
 
@@ -180,6 +182,7 @@ Radii: small (6px) for badges; medium (10px) for controls, fields, plot areas an
 - Do put supplemental guidance in disclosures.
 
 ### Don't:
-- Don't restore the dark palette or decorative gradients.
+- Don't add decorative gradients; the canvas stays flat in both themes.
+- Don't hard-code colours in rules; add or reuse a token so dark mode follows.
 - Don't add redundant subcaptions or explanatory filler.
 - Don't invent waveforms, scores, or successful results.

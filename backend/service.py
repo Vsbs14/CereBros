@@ -1,4 +1,5 @@
 import copy
+from collections import deque
 from pathlib import Path
 import secrets
 import threading
@@ -7,9 +8,10 @@ import uuid
 
 import numpy as np
 
-from .analysis import analyze
+from .analysis import MAX_SAMPLE_STEP, analyze
+from .signal_check import check_signal
 from .device import Device
-from .models import AnalysisConfig, ConnectRequest, SessionRequest, StimulusEventRequest
+from .models import AnalysisConfig, ConnectRequest, SessionRequest, StimulusEventRequest, StopRequest
 from .storage import Store
 
 
@@ -31,6 +33,7 @@ class Service:
         self.sample_count = 0
         self.sequence = 0
         self.latest = None
+        self.recent = deque()  # (timestamps, values) batches for the pre-experiment signal check
         self.stop_event = threading.Event()
         self.worker = threading.Thread(target=self._run, daemon=True, name="eeg-acquisition")
         self.worker.start()
@@ -53,6 +56,9 @@ class Service:
                         if not np.isfinite(ts).all() or not np.isfinite(values).all():
                             raise ValueError("Device returned nonfinite EEG samples")
                         self.device.last_sample = float(ts[-1])
+                        self.recent.append((ts.copy(), values.copy()))
+                        while self.recent and self.recent[-1][0][-1] - self.recent[0][0][-1] > 15:
+                            self.recent.popleft()
                         self.sequence += 1
                         self.latest = {"type": "eeg", "sequence": self.sequence, "source": self.device.source,
                                        "sampling_rate": self.device.sampling_rate, "channel_labels": self.device.labels,
@@ -88,10 +94,15 @@ class Service:
                 self._finish("interrupted", "Backend shut down during acquisition.")
             self.device.disconnect()
 
+    def status(self):
+        with self.lock:
+            return {**self.device.status(), "active_session_id": self.active["id"] if self.active else None}
+
     def connect(self, request: ConnectRequest):
         with self.lock:
             self.device.connect(request)
             self.latest = None
+            self.recent.clear()
             return self.device.status()
 
     def disconnect(self):
@@ -100,6 +111,32 @@ class Service:
                 self._finish("interrupted", "Device disconnected during acquisition.")
             self.device.disconnect()
             return self.device.status()
+
+    def signal_check(self, seconds: float = 5.0, channels: list[int] | None = None):
+        """channels are zero-based, like AnalysisConfig.channel_indices."""
+        with self.lock:
+            if self.device.source is None:
+                raise ValueError("Connect a source before running a signal check")
+            batches = list(self.recent)
+            fs, labels = self.device.sampling_rate, list(self.device.labels)
+            enabled = [c - 1 for c in self.device.active_channels]
+        channels = enabled if channels is None else channels
+        if not channels or any(c < 0 or c >= len(labels) for c in channels) or len(set(channels)) != len(channels):
+            raise ValueError("Signal check channels must be unique zero-based indices between 0 and 7")
+        if any(c not in enabled for c in channels):
+            raise ValueError("Selected channel is switched off. Disconnect and reconnect with the intended channels enabled.")
+        if not batches:
+            return check_signal([], [[]], fs, labels, channels)
+        times = np.concatenate([b[0] for b in batches])
+        values = np.concatenate([b[1] for b in batches])
+        keep = times >= times[-1] - seconds
+        times, values = times[keep], values[keep]
+        # Use only the most recent unbroken stretch; gaps would distort the windows.
+        gaps = np.where(np.diff(times) > MAX_SAMPLE_STEP / fs)[0]
+        if len(gaps):
+            times, values = times[gaps[-1] + 1:], values[gaps[-1] + 1:]
+        result = check_signal(times, values, fs, labels, channels)
+        return {**result, "source": self.device.source, "checked_at": time.time()}
 
     def start(self, request: SessionRequest):
         with self.lock:
@@ -111,6 +148,12 @@ class Service:
                 raise ValueError("Student does not exist")
             if request.sound_pair_id not in {p["id"] for p in SOUND_PAIRS}:
                 raise ValueError("Unknown sound pair")
+            request = request.model_copy(deep=True)
+            enabled = [c - 1 for c in self.device.active_channels]
+            if request.analysis.channel_indices is None:
+                request.analysis.channel_indices = enabled
+            if any(c not in enabled for c in request.analysis.channel_indices):
+                raise ValueError("Selected channel is switched off. Disconnect and reconnect with the intended channels enabled.")
             if request.analysis.channel_indices is not None and any(i >= len(self.device.labels) for i in request.analysis.channel_indices):
                 raise ValueError("Selected analysis channel is unavailable")
             if request.analysis.high_hz >= self.device.sampling_rate / 2:
@@ -197,6 +240,9 @@ class Service:
         if not session:
             raise ValueError("No active session")
         self._checkpoint()
+        for event in session["events"]:
+            if event["onset_timestamp"] > time.time():
+                event["canceled"] = True
         session["status"] = status
         session["ended_at"] = time.time()
         if warning:
@@ -210,14 +256,18 @@ class Service:
         self.sample_count = 0
         return copy.deepcopy(session)
 
-    def stop(self, identifier):
+    def stop(self, identifier, request: StopRequest | None = None):
         with self.lock:
             if not self.active or self.active["id"] != identifier:
                 existing = self.session(identifier)
                 if existing["status"] != "recording":
                     return existing
                 raise ValueError("Session is not active")
-            return self._finish("completed")
+            request = request or StopRequest()
+            for event in self.active["events"]:
+                if event["trial_index"] in request.canceled_trial_indices:
+                    event["canceled"] = True
+            return self._finish("interrupted" if request.interrupted else "completed", request.reason)
 
     def compare(self, identifiers):
         sessions = [self.session(s) for s in identifiers]

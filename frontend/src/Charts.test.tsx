@@ -65,8 +65,10 @@ describe('EEGChart', () => {
     expect(html).toContain('Parietal');
     expect(html).toContain('Oddball');
     expect(html).toContain('Time (s)');
-    expect(html).toContain('Scale ±2 µV');
-    expect((html.match(/stroke="#287794"/g) ?? []).length).toBe(2);
+    expect(html).toMatch(/Lane Height ±\d+ µV/);
+    // One colour per channel lane.
+    expect((html.match(/stroke="#5ed8e7"/g) ?? []).length).toBe(1);
+    expect((html.match(/stroke="#b69aff"/g) ?? []).length).toBe(1);
   });
 
   it('breaks a trace at null rather than joining across missing samples', () => {
@@ -75,7 +77,7 @@ describe('EEGChart', () => {
       { time_s: 1, channels: { Fz: null } },
       { time_s: 2, channels: { Fz: -1 } },
     ]} />);
-    expect((html.match(/stroke="#287794"/g) ?? []).length).toBe(2);
+    expect((html.match(/stroke="#5ed8e7"/g) ?? []).length).toBe(2);
   });
 
   it('places positive microvolts above negative microvolts', () => {
@@ -83,9 +85,23 @@ describe('EEGChart', () => {
       { time_s: 0, channels: { Fz: 2 } },
       { time_s: 1, channels: { Fz: -2 } },
     ]} />);
-    const trace = html.match(/<path d="M[\d.]+,([\d.]+) L[\d.]+,([\d.]+)"[^>]*stroke="#287794"/);
+    const trace = html.match(/<path d="M[\d.]+,([\d.]+) L[\d.]+,([\d.]+)"[^>]*stroke="#5ed8e7"/);
     expect(trace).not.toBeNull();
     expect(Number(trace?.[1])).toBeLessThan(Number(trace?.[2]));
+  });
+});
+
+describe('EEGChart lanes', () => {
+  it('removes each channel offset so a large DC offset does not squash other channels', () => {
+    const html = renderToStaticMarkup(<EEGChart samples={[0, 1, 2, 3].map((t) => ({ time_s: t, channels: { CH1: -50000 + (t % 2 ? 10 : -10), CH2: t % 2 ? 10 : -10 } }))} />);
+    expect(html).toContain('Lane Height ±10 µV');
+    expect(html).not.toContain('Clipped');
+  });
+
+  it('marks channels that exceed a fixed scale as clipped and only shows requested channels', () => {
+    const html = renderToStaticMarkup(<EEGChart scaleUv={10} channels={['CH2']} samples={[0, 1, 2].map((t) => ({ time_s: t, channels: { CH1: 0, CH2: t * 100 } }))} />);
+    expect(html).toContain('Clipped');
+    expect(html).toContain('1 Channel<');
   });
 });
 
@@ -106,7 +122,7 @@ describe('ERPChart', () => {
     expect(html).toContain('Provisional');
     expect(html).toContain('Baseline');
     expect(html).toContain('P300 Window');
-    expect(html).toContain('P300-Window Mean Amplitude');
+    expect(html).toContain('Mean P300 Amplitude');
     expect(html).toContain('3 µV');
     expect(html).toContain('Peak Amplitude');
     expect(html).toContain('3.6 µV');
