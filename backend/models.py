@@ -101,6 +101,7 @@ class StudentRequest(Model):
 
 
 class DeviceStatus(Model):
+    active_session_id: str | None = None
     source: Literal["simulation", "hardware"] | None
     connected: bool
     error: str | None
@@ -194,7 +195,14 @@ class TrialPlanEntry(Model):
     condition: Literal["standard", "deviant"]
 
 
+class StopRequest(Model):
+    interrupted: bool = False
+    reason: str | None = Field(default=None, max_length=300)
+    canceled_trial_indices: list[int] = Field(default_factory=list, max_length=500)
+
+
 class StimulusEvent(StimulusEventRequest):
+    canceled: bool = False
     condition: Literal["standard", "deviant"]
     received_at: float
 

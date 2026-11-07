@@ -11,9 +11,10 @@ import uuid
 from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
 
 from .models import (AnalysisResult, ConnectRequest, DeviceStatus, SessionRequest, SessionResponse,
-                     SessionSummary, StimulusEvent, StimulusEventRequest, StudentRequest, StudentResponse)
+                     SessionSummary, StimulusEvent, StimulusEventRequest, StudentRequest, StudentResponse, StopRequest)
 from .service import Service, SOUND_PAIRS
 
 
@@ -21,7 +22,7 @@ DEFAULT_ROOT = Path(__file__).resolve().parent.parent / "temp" / "data"
 
 
 def create_app(data_dir: Path | None = None):
-    allowed_origins = os.getenv("NEUROLINGO_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
+    allowed_origins = os.getenv("NEUROLINGO_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8000,http://127.0.0.1:8000").split(",")
 
     @asynccontextmanager
     async def lifespan(app):
@@ -62,7 +63,7 @@ def create_app(data_dir: Path | None = None):
     @app.get("/api/device")
     def device_status() -> DeviceStatus:
         with svc().lock:
-            return svc().device.status()
+            return svc().status()
 
     @app.post("/api/device/connect")
     def connect(body: ConnectRequest) -> DeviceStatus:
@@ -121,8 +122,8 @@ def create_app(data_dir: Path | None = None):
         return svc().marker(str(session_id), body)
 
     @app.post("/api/sessions/{session_id}/stop")
-    def stop_session(session_id: uuid.UUID) -> SessionResponse:
-        return svc().stop(str(session_id))
+    def stop_session(session_id: uuid.UUID, body: StopRequest | None = None) -> SessionResponse:
+        return svc().stop(str(session_id), body)
 
     @app.get("/api/sessions/{session_id}/analysis")
     def analysis(session_id: uuid.UUID) -> AnalysisResult:
@@ -176,7 +177,7 @@ def create_app(data_dir: Path | None = None):
                 # A slow websocket client never holds the acquisition lock while sending.
                 def snapshot():
                     with svc().lock:
-                        return svc().latest, svc().device.status()
+                        return svc().latest, svc().status()
                 batch, status = await asyncio.to_thread(snapshot)
                 if batch and batch["sequence"] != last_sequence and status["connected"]:
                     await asyncio.wait_for(websocket.send_json(batch), timeout=5)
@@ -187,6 +188,11 @@ def create_app(data_dir: Path | None = None):
                 await asyncio.sleep(.02)
         except (WebSocketDisconnect, RuntimeError, TimeoutError):
             return
+
+    # Build the frontend before startup to run both parts from one local origin.
+    frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+    if frontend_dist.is_dir():
+        app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")
 
     return app
 

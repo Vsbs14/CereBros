@@ -123,3 +123,22 @@ def test_csv_labels_simulation_even_without_any_trials(client):
     assert "simulation" in export.text
     assert "insufficient_data" in export.text
     assert "simulation" in export.headers["content-disposition"]
+
+
+def test_interrupted_audio_is_excluded_and_local_origin_is_allowed(client):
+    session = create_session(client)
+    path = f"/api/sessions/{session['id']}"
+    marker = {"trial_index": 0, "onset_timestamp": session["started_at"] + 1.0}
+    assert client.post(path + "/events", json=marker, headers={"Origin": "http://127.0.0.1:8000"}).status_code == 201
+    stopped = client.post(path + "/stop", json={"interrupted": True, "reason": "Audio interrupted", "canceled_trial_indices": [0]}).json()
+    assert stopped["status"] == "interrupted"
+    assert stopped["events"][0]["canceled"] is True
+    assert stopped["analysis"]["rejection_reasons"]["canceled_stimulus"] == 1
+    assert stopped["analysis"]["counts"]["accepted"] == {"standard": 0, "deviant": 0}
+
+
+def test_device_exposes_active_recording_for_recovery(client):
+    session = create_session(client)
+    assert client.get("/api/device").json()["active_session_id"] == session["id"]
+    client.post(f"/api/sessions/{session['id']}/stop").raise_for_status()
+    assert client.get("/api/device").json()["active_session_id"] is None

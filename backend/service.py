@@ -9,7 +9,7 @@ import numpy as np
 
 from .analysis import analyze
 from .device import Device
-from .models import AnalysisConfig, ConnectRequest, SessionRequest, StimulusEventRequest
+from .models import AnalysisConfig, ConnectRequest, SessionRequest, StimulusEventRequest, StopRequest
 from .storage import Store
 
 
@@ -87,6 +87,10 @@ class Service:
             if self.active:
                 self._finish("interrupted", "Backend shut down during acquisition.")
             self.device.disconnect()
+
+    def status(self):
+        with self.lock:
+            return {**self.device.status(), "active_session_id": self.active["id"] if self.active else None}
 
     def connect(self, request: ConnectRequest):
         with self.lock:
@@ -197,6 +201,9 @@ class Service:
         if not session:
             raise ValueError("No active session")
         self._checkpoint()
+        for event in session["events"]:
+            if event["onset_timestamp"] > time.time():
+                event["canceled"] = True
         session["status"] = status
         session["ended_at"] = time.time()
         if warning:
@@ -210,14 +217,18 @@ class Service:
         self.sample_count = 0
         return copy.deepcopy(session)
 
-    def stop(self, identifier):
+    def stop(self, identifier, request: StopRequest | None = None):
         with self.lock:
             if not self.active or self.active["id"] != identifier:
                 existing = self.session(identifier)
                 if existing["status"] != "recording":
                     return existing
                 raise ValueError("Session is not active")
-            return self._finish("completed")
+            request = request or StopRequest()
+            for event in self.active["events"]:
+                if event["trial_index"] in request.canceled_trial_indices:
+                    event["canceled"] = True
+            return self._finish("interrupted" if request.interrupted else "completed", request.reason)
 
     def compare(self, identifiers):
         sessions = [self.session(s) for s in identifiers]

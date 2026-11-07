@@ -61,6 +61,10 @@ def analyze(timestamps, samples, events, sampling_rate, labels, config: Analysis
             filtered[segment] = sosfiltfilt(sos, data[segment], axis=0)
     for event in events:
         record = {"trial_index": event["trial_index"], "condition": event["condition"], "status": "rejected", "reasons": []}
+        if event.get("canceled"):
+            record["reasons"].append("canceled_stimulus")
+            audit.append(record)
+            continue
         if not monotonic:
             record["reasons"].append("invalid_timestamp_order")
             audit.append(record)
