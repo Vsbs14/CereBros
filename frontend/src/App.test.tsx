@@ -2,20 +2,26 @@ import {renderToStaticMarkup} from 'react-dom/server';
 import {describe, expect, it} from 'vitest';
 import App from './App';
 
-const pages=['Home','How It Works','Dashboard','Sound Recognition','Live EEG','Students','Session History','Settings'] as const;
+const pages=['How It Works','Dashboard','Sound Recognition','Live EEG','Students','Session History','Settings'] as const;
 
 describe('unconnected workspace',()=>{
- it('opens on a single welcome panel that leads into setup',()=>{
+ it('opens on the simple practice view with a way into the teacher view',()=>{
   const html=renderToStaticMarkup(<App/>);
-  for(const page of pages) expect(html).toContain(page);
-  expect(html).toContain('Welcome to NeuroLingo');
-  expect(html).toContain('Start Setup');
+  expect(html).toContain('Practice');
+  expect(html).toContain('Progress');
+  expect(html).toContain('Teacher View');
+  expect(html).toContain("Who&#x27;s listening today?");
   expect(html).not.toContain('step-card');
-  expect(html).toContain('EEG Not Connected');
   expect(html.match(/role="status"/g)).toHaveLength(1);
  });
+ it('lists every detailed page in the teacher view',()=>{
+  const html=renderToStaticMarkup(<App initialView="teacher"/>);
+  for(const page of pages) expect(html).toContain(page);
+  expect(html).toContain('EEG Not Connected');
+  expect(html).toContain('Simple View');
+ });
  it('shows all core navigation and honest acquisition state on the dashboard',()=>{
-  const html=renderToStaticMarkup(<App initialPage="Dashboard"/>);
+  const html=renderToStaticMarkup(<App initialView="teacher" initialPage="Dashboard"/>);
   for(const step of ['Set Up a Session','Choose a Student','Connect a Source','Check the Signal','Start Listening']) expect(html).toContain(step);
   expect(html).toContain('Not Connected');
   expect(html).toContain('No Student Selected');
@@ -25,7 +31,7 @@ describe('unconnected workspace',()=>{
   expect(html).not.toContain('brain recognition accuracy');
  });
  it('keeps continuous EEG and averaged ERP distinct on the explainer page',()=>{
-  const html=renderToStaticMarkup(<App initialPage="How It Works"/>);
+  const html=renderToStaticMarkup(<App initialView="teacher" initialPage="How It Works"/>);
   expect(html).toContain('How a Session Works');
   expect(html).toContain('Planned Pack');
   expect(html).toContain('NeuroPawn Resources');
@@ -36,10 +42,11 @@ describe('unconnected workspace',()=>{
   expect(html).toMatch(/aria-label="Switch to (Dark|Light) Mode"/);
  });
  it('never mentions ESL on any page',()=>{
-  for(const page of pages) expect(renderToStaticMarkup(<App initialPage={page}/>)).not.toMatch(/\bESL\b/);
+  for(const page of pages) expect(renderToStaticMarkup(<App initialView="teacher" initialPage={page}/>)).not.toMatch(/\bESL\b/);
+  expect(renderToStaticMarkup(<App/>)).not.toMatch(/\bESL\b/);
  });
  it('provides a keyboard skip link and scientific limitations',()=>{
-  const html=renderToStaticMarkup(<App initialPage="Dashboard"/>);
+  const html=renderToStaticMarkup(<App initialView="teacher" initialPage="Dashboard"/>);
   expect(html).toContain('href="#main"');
   expect(html).toContain('aria-label="Main navigation"');
   expect(html).toContain('not proof of learning');

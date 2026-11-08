@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
-import {Activity, AudioLines, Users, History, Settings, LayoutDashboard, Headphones, House, BookOpen, ArrowRight, RefreshCw, ShieldCheck, ChevronRight, Sun, Moon, UserRound, Radio, Waves} from 'lucide-react';
+import {Activity, AudioLines, Users, History, Settings, LayoutDashboard, Headphones, BookOpen, ArrowRight, RefreshCw, ShieldCheck, ChevronRight, Sun, Moon, UserRound, Radio, Waves, SlidersHorizontal} from 'lucide-react';
 import {EEGChart, ERPChart, type EEGSample} from './Charts';
 import {API_BASE_URL, fetchContract, inspectCapabilities} from './api';
 import {api, downloadUrl, eegSamples, erpData, websocketUrl, type Analysis, type Comparison, type Device, type EEGMessage, type Session, type SignalCheck, type Student, type Source} from './client';
@@ -8,13 +8,14 @@ import {createSyntheticToneDemo, prepareAudioUpload, type PreparedAudioAsset} fr
 import {runExperiment} from './experiment';
 
 import {ElectrodeMap, LinkCard, SessionDiagram, SoundPairCard, resources, soundPairs} from './Guides';
+import {DemoPractice, DemoProgress, StudentChips} from './Simple';
+import {demoOptions} from './demo';
 
-const pages=['Home','How It Works','Dashboard','Sound Recognition','Live EEG','Students','Session History','Settings'] as const;
-const icons=[House,BookOpen,LayoutDashboard,AudioLines,Activity,Users,History,Settings];
+const pages=['How It Works','Dashboard','Sound Recognition','Live EEG','Students','Session History','Settings'] as const;
+const icons=[BookOpen,LayoutDashboard,AudioLines,Activity,Users,History,Settings];
 function Card({title,children,action}:{title:string;children:React.ReactNode;action?:React.ReactNode}){return <section className="card"><div className="card-heading"><h2>{title}</h2>{action}</div>{children}</section>}
 function Empty({children}:{children:React.ReactNode}){return <div className="empty"><Activity size={28}/><p>{children}</p></div>}
 const intros:Record<typeof pages[number],string>={
-  'Home':'',
   'How It Works':'What happens during a session, which sound pairs are planned, where the electrodes go, and what the charts can and cannot show.',
   'Dashboard':'Set up a session, check the connection, and watch the response come in.',
   'Sound Recognition':'Configure the oddball experiment, prepare audio, and start recording.',
@@ -31,8 +32,12 @@ const THEME_KEY='neurolingo-theme';
 function storedTheme():Theme|null{try{const value=localStorage.getItem(THEME_KEY);return value==='light'||value==='dark'?value:null}catch{return null}}
 function systemTheme():Theme{return typeof matchMedia==='function'&&matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'}
 
-export default function App({initialPage='Home'}:{initialPage?:typeof pages[number]}={}){
+const simpleTabs=['Practice','Progress'] as const;
+
+export default function App({initialPage='Dashboard',initialView='simple'}:{initialPage?:typeof pages[number];initialView?:'simple'|'teacher'}={}){
   const [page,setPage]=useState<typeof pages[number]>(initialPage);
+  const [mode,setMode]=useState(initialView),[demo]=useState(()=>demoOptions());
+  const [tab,setTab]=useState<typeof simpleTabs[number]>(demo.step==='progress'?'Progress':'Practice');
   const [ready,setReady]=useState(false),[busy,setBusy]=useState(false),[connection,setConnection]=useState('Checking backend…'),[error,setError]=useState('');
   const [device,setDevice]=useState<Device|null>(null),[students,setStudents]=useState<Student[]>([]),[studentId,setStudentId]=useState(''),[name,setName]=useState('');
   const [sessions,setSessions]=useState<Session[]>([]),[session,setSession]=useState<Session|null>(null),[result,setResult]=useState<Analysis|null>(null);
@@ -54,8 +59,6 @@ export default function App({initialPage='Home'}:{initialPage?:typeof pages[numb
   // Follow the system setting until the user picks a theme explicitly.
   useEffect(()=>{if(typeof matchMedia!=='function')return;const query=matchMedia('(prefers-color-scheme: dark)');const follow=()=>{if(!storedTheme())setTheme(query.matches?'dark':'light')};query.addEventListener('change',follow);return()=>query.removeEventListener('change',follow)},[]);
   function toggleTheme(){const next=theme==='dark'?'light':'dark';setTheme(next);try{localStorage.setItem(THEME_KEY,next)}catch{/* preference lasts for this visit only */}}
-  // Sections fade up as they scroll into view; skipped without IntersectionObserver or with reduced motion, so content is never hidden.
-  useEffect(()=>{if(typeof IntersectionObserver==='undefined'||matchMedia('(prefers-reduced-motion: reduce)').matches)return;const targets=document.querySelectorAll('.page > :not(.page-heading), .page .card-grid > *, .page .step-cards > *, .page .stat-grid > *');const observer=new IntersectionObserver(entries=>{for(const entry of entries)if(entry.isIntersecting){const el=entry.target;el.classList.add('in-view');observer.unobserve(el);/* drop the classes once settled so hover transitions work normally */setTimeout(()=>el.classList.remove('reveal','in-view'),800)}},{rootMargin:'0px 0px -40px 0px'});targets.forEach((el,i)=>{el.classList.add('reveal');(el as HTMLElement).style.setProperty('--reveal-delay',`${Math.min(i,6)*40}ms`);observer.observe(el)});return()=>observer.disconnect()},[page]);
 
   const refresh=useCallback(async()=>{
     const [d,s,h]=await Promise.all([api.device(),api.students(),api.sessions()]);
@@ -180,7 +183,7 @@ export default function App({initialPage='Home'}:{initialPage?:typeof pages[numb
     const id=device?.active_session_id||(session?.status==='recording'?session.id:null);
     if(id)await action(async()=>{const stopped=await api.stop(id,{interrupted:true,reason:'Stopped from workspace'});setSession(stopped);setResult(stopped.analysis);await refresh()});
   }
-  async function view(id:string){await action(async()=>{const detail=await api.session(id);setSession(detail);setSlot(0);setComparison(null);setResult(await api.analysis(id));setPage('Session History')})}
+  async function view(id:string){await action(async()=>{const detail=await api.session(id);setSession(detail);setSlot(0);setComparison(null);setResult(await api.analysis(id));setPage('Session History');setMode('teacher')})}
   const chart=erpData(result,slot);
   const channelMap=Object.fromEntries((device?.channel_labels??[]).map((label,i)=>[`CH${i+1}`,label]));
   const markers=(session?.events??[]).filter(e=>!e.canceled).map(e=>({time_s:e.onset_timestamp-(origin.current??0),label:`Trial ${e.trial_index+1} · ${e.condition}`,kind:e.condition as 'standard'|'deviant'}));
@@ -220,26 +223,65 @@ export default function App({initialPage='Home'}:{initialPage?:typeof pages[numb
     {icon:Waves,title:'Check the Signal',description:'Seat the electrodes over Cz and Pz, then run a 5-second signal check.',state:device?.source==='simulation'?'Not Needed for Simulation':checkFresh&&signal?.ready?'Signal Usable':signal?'Needs Attention':'Not Run',done:device?.source==='simulation'||Boolean(checkFresh&&signal?.ready),action:'Run Signal Check',to:'Settings' as const},
     {icon:Headphones,title:'Start Listening',description:'Headphones on, enable audio, and start. The learner silently counts the odd sound.',state:running||active?'Recording…':'Ready When Steps Are Done',done:running||active,action:'Go to Experiment',to:'Sound Recognition' as const},
   ];
-  const heading=page==='Home'?null:<div className="page-heading"><div><h1>{page}</h1><p className="page-intro">{intros[page]}</p></div>{page==='Dashboard'&&<button className="primary" onClick={()=>setPage('Sound Recognition')}>Set Up Experiment <ArrowRight size={16}/></button>}</div>;
+  const heading=<div className="page-heading"><div><h1>{page}</h1><p className="page-intro">{intros[page]}</p></div>{page==='Dashboard'&&<button className="primary" onClick={()=>setPage('Sound Recognition')}>Set Up Experiment <ArrowRight size={16}/></button>}</div>;
+
+  const themeButton=<button className="icon-button" onClick={toggleTheme} aria-label={theme==='dark'?'Switch to Light Mode':'Switch to Dark Mode'} title={theme==='dark'?'Switch to Light Mode':'Switch to Dark Mode'}>{theme==='dark'?<Sun size={16}/>:<Moon size={16}/>}</button>;
+  const simpleLink=demo.enabled?{label:'Headset connected',tone:'ok'}:link;
+  const studentSessions=sessions.filter(s=>!studentId||s.student_id===studentId);
+  const canStart=ready&&device?.connected&&studentId&&audioReady&&headphones&&!busy&&!running&&!active&&signalOk;
+  const realPractice=<div className="simple-page">
+    {error&&<p className="warning" role="alert">{error}</p>}
+    <section className="panel">
+      <h2>Who's listening today?</h2>
+      {students.length?<StudentChips students={students} value={studentId} onChange={setStudentId} disabled={running||active}/>:<p className="muted">{ready?'No students yet. Add one below.':'Waiting for the NeuroLingo server…'}</p>}
+      <form className="inline-form" onSubmit={e=>{e.preventDefault();void action(async()=>{const s=await api.student(name.trim());setStudentId(s.id);setName('');await refresh()})}}><input aria-label="New student name" maxLength={100} value={name} onChange={e=>setName(e.target.value)} placeholder="Add a student"/><button className="secondary" disabled={!ready||busy||!name.trim()}>Add</button></form>
+    </section>
+    <section className="panel setup-panel">
+      <div className="setup-head"><div><p className="eyebrow">{student?.name??'No student'} · Listening</p><h2>{running||active?'Listening…':canStart?'Ready to start':'Get ready'}</h2></div>
+        <label className="lesson-select">Lesson<select value={pair} onChange={e=>setPair(e.target.value)} disabled={running||active}><option value="tone-demo">Tone warm-up</option><option value="caballo-cabello">caballo / cabello</option></select></label></div>
+      <ol className="ready-list">
+        <li data-done={Boolean(device?.connected)}><span className="ready-dot" aria-hidden="true"/><span>Headset</span><span className="ready-state">{device?.connected?`${sourceLabel(device.source)} connected`:'Not connected'}</span>{!device?.connected&&<button className="secondary compact" disabled={!ready||busy} onClick={()=>void connectDevice()}>Connect</button>}</li>
+        <li data-done={Boolean(device?.connected)&&(device?.source!=='hardware'||Boolean(checkFresh&&signal?.ready))}><span className="ready-dot" aria-hidden="true"/><span>Signal</span><span className="ready-state">{device?.source==='hardware'?signalLabel:'Not needed'}</span>{device?.source==='hardware'&&<button className="secondary compact" disabled={!device.connected||checking||running} onClick={()=>void runSignalCheck()}>{checking?'Checking…':'Check signal'}</button>}</li>
+        <li data-done={headphones&&audioReady}><span className="ready-dot" aria-hidden="true"/><span>Headphones</span><label className="checkbox ready-state"><input type="checkbox" checked={headphones} disabled={running} onChange={e=>setHeadphones(e.target.checked)}/>Connected</label>{!audioReady&&<button className="secondary compact" disabled={!headphones||busy} onClick={()=>void enableAudio()}>Turn on sound</button>}</li>
+        {pair!=='tone-demo'&&<li data-done={Boolean(standard&&deviant)}><span className="ready-dot" aria-hidden="true"/><span>Recordings</span><span className="ready-state">{standard&&deviant?'Added':'Add both words in Teacher view'}</span><button className="secondary compact" onClick={()=>{setPage('Sound Recognition');setMode('teacher')}}>Open</button></li>}
+      </ol>
+      {(running||active)&&<div className="progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={session?.request.trials??trials} aria-valuenow={progress}><span style={{width:`${(progress/(session?.request.trials??trials))*100}%`}}/></div>}
+      {device?.connected&&<div className="trace-frame">{eegChart}</div>}
+      <div className="setup-actions">{running||active?<button className="big-button secondary" disabled={busy} onClick={()=>void stop()}>Stop</button>:<button className="big-button primary" disabled={!canStart} onClick={()=>void start()}>Start <ArrowRight size={20}/></button>}</div>
+    </section>
+    {result&&!running&&!active&&<section className="panel"><h2>Last session</h2><p className="lead">{result.counts.accepted.standard+result.counts.accepted.deviant} sounds measured · {titleCase(result.quality)}</p><p className="muted">Exploratory measurement. Responses depend on attention, signal quality and electrode placement.</p><button className="secondary" onClick={()=>{setPage('Session History');setMode('teacher')}}>Open full results <ArrowRight size={14}/></button></section>}
+  </div>;
+  const realProgress=<div className="simple-page">
+    <div className="progress-head"><div><p className="eyebrow">{student?.name??'All students'}</p><h2 className="page-title">Progress</h2></div></div>
+    <section className="panel">{studentSessions.length?<ul className="session-list">{studentSessions.map(s=><li key={s.id}><span className="when">{new Date(s.started_at*1000).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</span><strong>{s.request.sound_pair_id==='tone-demo'?'Tone warm-up':s.request.sound_pair_id.replace('-',' / ')}</strong><span className="pill">{titleCase(s.status)}</span><button className="text-button" onClick={()=>void view(s.id)}>Details <ArrowRight size={14}/></button></li>)}</ul>:<p className="muted">{ready?'No sessions yet. Finished sessions show up here.':'Waiting for the NeuroLingo server…'}</p>}</section>
+  </div>;
+  if(mode==='simple')return <div className="simple-app">
+    <header className="simple-bar">
+      <button className="brand" onClick={()=>setTab('Practice')}><AudioLines size={22}/><span>NeuroLingo</span></button>
+      <nav className="tabs" aria-label="Main navigation">{simpleTabs.map(t=><button key={t} className={tab===t?'tab active':'tab'} aria-current={tab===t?'page':undefined} onClick={()=>setTab(t)}>{t}</button>)}</nav>
+      <div className="bar-end">
+        <span className="link-label" data-tone={simpleLink.tone}><span className="status-dot" aria-hidden="true"/><span role="status">{simpleLink.label}</span></span>
+        <button className="secondary compact" onClick={()=>setMode('teacher')}><SlidersHorizontal size={15}/>Teacher View</button>
+        {themeButton}
+      </div>
+    </header>
+    <main id="main" className="simple-main">
+      {tab==='Practice'?(demo.enabled?<DemoPractice options={demo} onShowProgress={()=>setTab('Progress')}/>:realPractice):(demo.enabled?<DemoProgress onPractice={()=>setTab('Practice')}/>:realProgress)}
+    </main>
+  </div>;
 
   return <div className="app"><a className="skip-link" href="#main">Skip to Content</a>
     <aside className="sidebar">
-      <a className="brand" href="#home" onClick={()=>setPage('Home')}><AudioLines size={24}/><span>NeuroLingo</span></a>
+      <button className="brand" onClick={()=>setMode('simple')}><AudioLines size={24}/><span>NeuroLingo</span></button>
       <nav aria-label="Main navigation">{pages.map((p,i)=>{const Icon=icons[i];return <button className={page===p?'nav active':'nav'} key={p} onClick={()=>setPage(p)} aria-current={page===p?'page':undefined}><Icon size={18}/>{p}</button>})}</nav>
       <div className="sidebar-bottom">Powered by CereBros</div>
     </aside>
     <div className="main"><header className="topbar"><div className="breadcrumb">NeuroLingo <ChevronRight size={14}/><span>{page}</span></div>
-      <div className="link-status" data-tone={link.tone}><span className="link-label"><span className="status-dot" aria-hidden="true"/><span role="status">{link.label}</span></span><span className="divider" aria-hidden="true"/><button className="text-button" disabled={busy||running} onClick={()=>void check()}><RefreshCw size={14}/>{busy&&!ready?'Checking…':'Reconnect'}</button><details><summary>Details</summary><p>{connection}<br/>{API_BASE_URL} · {stream}</p></details><button className="icon-button" onClick={toggleTheme} aria-label={theme==='dark'?'Switch to Light Mode':'Switch to Dark Mode'} title={theme==='dark'?'Switch to Light Mode':'Switch to Dark Mode'}>{theme==='dark'?<Sun size={16}/>:<Moon size={16}/>}</button></div>
+      <div className="link-status" data-tone={link.tone}><span className="link-label"><span className="status-dot" aria-hidden="true"/><span role="status">{link.label}</span></span><span className="divider" aria-hidden="true"/><button className="text-button" disabled={busy||running} onClick={()=>void check()}><RefreshCw size={14}/>{busy&&!ready?'Checking…':'Reconnect'}</button><details><summary>Details</summary><p>{connection}<br/>{API_BASE_URL} · {stream}</p></details><button className="secondary compact" onClick={()=>setMode('simple')}>Simple View</button><button className="icon-button" onClick={toggleTheme} aria-label={theme==='dark'?'Switch to Light Mode':'Switch to Dark Mode'} title={theme==='dark'?'Switch to Light Mode':'Switch to Dark Mode'}>{theme==='dark'?<Sun size={16}/>:<Moon size={16}/>}</button></div>
     </header>
     <main id="main"><div className="page">{heading}
     {error&&<p className="warning" role="alert">{error}</p>}
     {(active||running)&&<div className="recording-banner"><span className="status-dot" aria-hidden="true"/><strong>{sourceLabel(session?.source)} · Recording · {progress}/{session?.request.trials} Sounds Completed</strong><span>Keep this tab visible. Recording continues through the final epoch automatically.</span><button disabled={busy} onClick={()=>void stop()}>Early Stop</button></div>}
-    {page==='Home'&&<section className="home" aria-labelledby="hero-title">
-      <span className="home-mark" aria-hidden="true"><AudioLines size={44}/></span>
-      <h1 id="hero-title">Welcome to NeuroLingo</h1>
-      <p>Play a stream of common and occasional sounds while the headset records, then review how a learner responds to a sound contrast.</p>
-      <div className="button-row home-actions"><button className="primary" onClick={()=>setPage('Dashboard')}>Start Setup <ArrowRight size={16}/></button><button className="secondary" onClick={()=>setPage('How It Works')}>How It Works</button></div>
-    </section>}
     {page==='How It Works'&&<>
       <div className="split split-wide">
         <Card title="How a Session Works"><SessionDiagram baselineMs={baseline} windowMs={[windowStart,windowEnd]} epochEndMs={endpoint}/></Card>
