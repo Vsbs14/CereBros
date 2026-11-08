@@ -76,9 +76,10 @@ export function LiveTrace({ sim, clock, range, windowS = 6, showResponses = fals
       context.textBaseline = 'middle';
       sim.events.forEach((event, index) => {
         if (event.t < t0 - 1 || event.t > t1) return;
-        const color = showResponses && !event.familiar ? unknown : known;
+        const dip = event.response === 'unknown';
+        const color = showResponses && dip ? unknown : known;
         if (showResponses) {
-          context.globalAlpha = event.familiar ? 0.1 : 0.2;
+          context.globalAlpha = dip ? 0.2 : 0.1;
           context.fillStyle = color;
           context.fillRect(x(event.t + 0.22), top, x(event.t + 0.68) - x(event.t + 0.22), bottom - top);
           context.globalAlpha = 1;
@@ -94,7 +95,7 @@ export function LiveTrace({ sim, clock, range, windowS = 6, showResponses = fals
         context.setLineDash([]);
         context.globalAlpha = 1;
         context.fillStyle = showResponses ? color : ink;
-        context.fillText(numbered ? String(index + 1) : event.label, ex + 6, 14);
+        context.fillText(numbered ? `${index + 1}${showResponses && dip ? ' · dip' : ''}` : event.label, ex + 6, 14);
       });
 
       // Trace

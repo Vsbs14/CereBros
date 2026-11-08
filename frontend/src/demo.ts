@@ -1,14 +1,15 @@
 /** Scripted presentation mode (?demo). Everything here runs in the browser; nothing touches the backend. */
 
-export interface LessonWord { text: string; familiar: boolean }
-
-/** Heard, never shown, until the listening is over: seeing the words first would tell the listener what to expect. */
-export const SENTENCE = {
-  title: 'En la cocina',
-  words: ['Mi', 'abuela', 'cocina', 'arroz', 'con', 'azafrán'],
-  unfamiliar: 'azafrán',
-  translation: 'My grandmother cooks rice with saffron.',
-};
+/**
+ * The program never knows the sentence. Every heard word evokes a small onset blip (N1/P2), which is how words are
+ * counted; a word the listener does not recognise adds a large negative dip about 400 ms later (N400-like).
+ * In the script the sixth word, "azafrán", is the unfamiliar one.
+ */
+export const SENTENCE_WORDS = 6;
+export const UNFAMILIAR_INDEX = 5;
+/** The pair check works for any two words: the teacher's keys say which of the two was spoken, never what it was. */
+export const PAIR = ['Word A', 'Word B'] as const;
+export type PairWord = typeof PAIR[number];
 
 export const DEMO_STUDENTS = [
   { id: 'evan', name: 'Evan', color: 'blue' },
@@ -17,23 +18,20 @@ export const DEMO_STUDENTS = [
   { id: 'lucia', name: 'Lucía', color: 'amber' },
 ] as const;
 
-export type DemoStep = 'pick' | 'setup' | 'reading' | 'result' | 'progress';
+export type DemoStep = 'pick' | 'setup' | 'reading' | 'result' | 'pair' | 'pair-result' | 'progress';
+const STEPS: DemoStep[] = ['pick', 'setup', 'reading', 'result', 'pair', 'pair-result', 'progress'];
 export interface DemoOptions { enabled: boolean; round: 1 | 2; autoSeconds: number | null; step: DemoStep }
 
 /**
- * `?demo` turns it on, `&round=2` makes every word familiar, `&auto=1.6` reveals words on a timer instead of on key presses,
- * `&step=setup|reading|result|progress` opens on that screen (handy for retakes).
+ * `?demo` turns it on. `&round=2` is three weeks later: no dip, and the two pair words clearly different.
+ * `&auto=1.6` marks sentence words on a timer instead of key presses. `&step=<screen>` opens on that screen (handy for retakes).
  */
 export function demoOptions(search = typeof window === 'undefined' ? '' : window.location.search): DemoOptions {
   const params = new URLSearchParams(search);
   const auto = Number(params.get('auto'));
   const step = params.get('step');
   return { enabled: params.has('demo'), round: params.get('round') === '2' ? 2 : 1, autoSeconds: auto > 0 ? auto : null,
-    step: step === 'setup' || step === 'reading' || step === 'result' || step === 'progress' ? step : 'pick' };
-}
-
-export function lessonWords(round: 1 | 2): LessonWord[] {
-  return SENTENCE.words.map((text) => ({ text, familiar: round === 2 || text !== SENTENCE.unfamiliar }));
+    step: STEPS.find((s) => s === step) ?? 'pick' };
 }
 
 function mulberry32(seed: number) {
@@ -47,13 +45,21 @@ function mulberry32(seed: number) {
 
 const bump = (x: number, mu: number, sigma: number) => Math.exp(-((x - mu) ** 2) / (2 * sigma * sigma));
 
-/** Single-trial word response in µV, `dt` seconds after the word. Familiar words rise; an unfamiliar word dips. */
-function wordResponse(dt: number, familiar: boolean): number {
-  const early = -6 * bump(dt, 0.11, 0.03) + 7 * bump(dt, 0.2, 0.04);
-  return familiar ? early + 21 * bump(dt, 0.4, 0.09) : early - 27 * bump(dt, 0.42, 0.11) + 6 * bump(dt, 0.78, 0.1);
+/** known/unknown: sentence words. same/different: pair words, depending on whether the contrast is heard. */
+export type WordResponse = 'known' | 'unknown' | 'same' | 'different';
+
+/** Single-trial response in µV, `dt` seconds after a word. */
+function wordResponse(dt: number, response: WordResponse): number {
+  const onset = -8 * bump(dt, 0.1, 0.03) + 10 * bump(dt, 0.2, 0.045);
+  switch (response) {
+    case 'known': return onset + 2.5 * bump(dt, 0.4, 0.12);
+    case 'unknown': return onset - 26 * bump(dt, 0.42, 0.11) + 5 * bump(dt, 0.78, 0.1);
+    case 'same': return onset + 3 * bump(dt, 0.38, 0.09);
+    case 'different': return onset - 4 * bump(dt, 0.17, 0.035) + 14 * bump(dt, 0.39, 0.085);
+  }
 }
 
-export interface WordEvent { t: number; label: string; familiar: boolean }
+export interface WordEvent { t: number; label: string; response: WordResponse }
 
 /** Plausible-looking single channel at 250 Hz: alpha/theta/beta rhythms, 1/f-ish noise and word responses. */
 export class SignalSim {
@@ -94,7 +100,7 @@ export class SignalSim {
       for (let i = this.events.length - 1; i >= 0; i--) {
         const dt = t - this.events[i].t;
         if (dt > 1.3) break;
-        if (dt >= 0) value += wordResponse(dt, this.events[i].familiar);
+        if (dt >= 0) value += wordResponse(dt, this.events[i].response);
       }
       this.times.push(t);
       this.values.push(value);
@@ -107,18 +113,18 @@ export class SignalSim {
     }
   }
 
-  mark(label: string, familiar: boolean, t = this.now) { this.events.push({ t, label, familiar }); }
+  mark(label: string, response: WordResponse, t = this.now) { this.events.push({ t, label, response }); }
 }
 
 /** Averaged response to one word of a pair, 0–800 ms, as [ms, µV] points. */
-export function pairCurve(word: 'caballo' | 'cabello', phase: 'before' | 'after'): [number, number][] {
-  const random = mulberry32(word === 'caballo' ? 3 : phase === 'before' ? 5 : 11);
+export function pairCurve(word: PairWord, phase: 'before' | 'after'): [number, number][] {
+  const random = mulberry32(word === PAIR[0] ? 3 : phase === 'before' ? 5 : 11);
   const phases = Array.from({ length: 4 }, () => random() * Math.PI * 2);
   const points: [number, number][] = [];
   for (let ms = -100; ms <= 800; ms += 5) {
     const s = ms / 1000;
     let uv = -4 * bump(s, 0.1, 0.025) + 4 * bump(s, 0.19, 0.04) + 3 * bump(s, 0.38, 0.09);
-    if (word === 'cabello') uv += phase === 'after' ? -4 * bump(s, 0.17, 0.035) + 11 * bump(s, 0.39, 0.085) : 0.8 * bump(s, 0.36, 0.1);
+    if (word === PAIR[1]) uv += phase === 'after' ? -4 * bump(s, 0.17, 0.035) + 11 * bump(s, 0.39, 0.085) : 0.8 * bump(s, 0.36, 0.1);
     uv += 0.45 * Math.sin(2 * Math.PI * 6 * s + phases[0]) + 0.3 * Math.sin(2 * Math.PI * 11 * s + phases[1]) + 0.25 * Math.sin(2 * Math.PI * 3 * s + phases[2]);
     points.push([ms, ms < 0 ? uv * 0.4 : uv]);
   }
