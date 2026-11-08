@@ -244,7 +244,13 @@ export function DemoPractice({ options, onShowProgress }: { options: DemoOptions
           <span className="heard-count" aria-live="polite">{pair ? <>{PAIR[0]} <strong>{counts[0]}</strong> · {PAIR[1]} <strong>{counts[1]}</strong></> : <>Words heard <strong>{heard.length}</strong></>}</span>
         </div>
         <div className="trace-frame"><LiveTrace sim={sim} clock={clock} windowS={7} height={260} numbered={!pair} label="Live brain activity while words are heard" /></div>
-        {pair && <div className="setup-actions"><button className="big-button secondary" disabled={!counts[0] || !counts[1]} onClick={() => finish('pair-result')}>Done</button></div>}
+        {pair ? <div className="setup-actions">
+          <button className="secondary" onClick={() => pairWord(PAIR[0])}>Say Word A (Space)</button>
+          <button className="secondary" onClick={() => pairWord(PAIR[1])}>Say Word B (B key)</button>
+          <button className="big-button primary" disabled={!counts[0] || !counts[1]} onClick={() => finish('pair-result')}>Done</button>
+        </div> : !usingRecording && <div className="setup-actions">
+          <button className="secondary" onClick={nextSentenceWord}>Say Next Word (Space)</button>
+        </div>}
       </section>
     </div>;
   }
